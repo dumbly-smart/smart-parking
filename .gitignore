@@ -47,3 +47,6 @@ firmware/**/build/
 *.swp
 .DS_Store
 Thumbs.db
+
+# Isolated development worktrees
+.worktrees/
