@@ -4,11 +4,13 @@ from pathlib import Path
 from typing import Literal
 
 import yaml
-from pydantic import BaseModel, Field, PrivateAttr, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class ObjectiveWeights(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
     distance: float = Field(default=0.35, ge=0, le=1)
     congestion: float = Field(default=0.30, ge=0, le=1)
     waiting: float = Field(default=0.20, ge=0, le=1)

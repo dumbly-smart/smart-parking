@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import json
 import sqlite3
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from pathlib import Path
 
 from backend.app.config import SlotConfig
+from optimization.models import AllocationResult, PersistedOptimizerRun
 
 SCHEMA = """
 PRAGMA foreign_keys = ON;
@@ -133,3 +135,46 @@ class Database:
         with self.connect() as connection:
             row = connection.execute("SELECT COUNT(*) AS count FROM parking_slots").fetchone()
         return int(row["count"] if row else 0)
+
+    def save_optimizer_results(self, results: Sequence[AllocationResult]) -> None:
+        with self.connect() as connection:
+            connection.executemany(
+                """
+                INSERT INTO optimizer_runs (
+                    algorithm, scenario_id, chosen_slot_id, best_cost, iterations,
+                    runtime_ms, objective_breakdown, seed
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    (
+                        result.algorithm,
+                        result.scenario_id,
+                        result.chosen_slot_id,
+                        result.best_cost,
+                        result.iterations,
+                        result.runtime_ms,
+                        json.dumps(result.objective_breakdown.model_dump(), sort_keys=True),
+                        result.seed,
+                    )
+                    for result in results
+                ],
+            )
+
+    def list_optimizer_results(self) -> list[PersistedOptimizerRun]:
+        with self.connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT algorithm, scenario_id, chosen_slot_id, best_cost, iterations,
+                       runtime_ms, objective_breakdown, seed, created_at
+                FROM optimizer_runs ORDER BY id DESC
+                """
+            ).fetchall()
+        return [
+            PersistedOptimizerRun.model_validate(
+                {
+                    **dict(row),
+                    "objective_breakdown": json.loads(row["objective_breakdown"]),
+                }
+            )
+            for row in rows
+        ]

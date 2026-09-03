@@ -148,3 +148,28 @@ Invalid slot counts, weights, or unsafe hardware-mode combinations fail at
 startup. SQL transactions remain explicit and testable without an ORM, while a
 future persistence replacement must preserve the service-facing database
 boundary and migration semantics.
+
+## ADR-008: Discrete seeded optimizer contract
+
+- Date: 2026-09-03
+- Status: Accepted
+
+### Context
+
+GA, PSO, and ACO must be comparable on a five-slot discrete allocation problem
+without allowing algorithm-specific objectives or occupancy handling.
+
+### Decision
+
+Represent every run as one validated five-candidate `AllocationRequest` and
+return one `AllocationResult`. Filter occupied candidates before any search,
+evaluate all candidates through the shared weighted objective, use a local RNG
+seed, cap iterations at 10,000, and benchmark the same immutable request across
+all algorithms.
+
+### Consequences
+
+Semantic results are reproducible while runtime remains a measured value.
+Malformed scenarios fail validation and full capacity produces a structured
+409 response. Algorithm implementations may evolve independently only behind
+this contract.

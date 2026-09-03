@@ -8,6 +8,7 @@ from pydantic import BaseModel
 
 from backend.app.config import Settings
 from backend.app.db import Database
+from backend.app.routes.allocation import router as allocation_router
 
 
 class HealthResponse(BaseModel):
@@ -29,6 +30,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         yield
 
     application = FastAPI(title="Smart Parking API", version="0.1.0", lifespan=lifespan)
+    application.include_router(allocation_router)
 
     @application.get("/health", response_model=HealthResponse)
     def health(request: Request) -> HealthResponse:

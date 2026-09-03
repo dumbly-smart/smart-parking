@@ -4,9 +4,8 @@ Last updated: 2026-09-03
 
 ## Current Status
 
-Milestone 1 (backend foundation) is complete and verified on `main`. The service
-loads typed configuration, initializes all planned SQLite tables idempotently,
-seeds exactly five slots, and exposes `/health`.
+Milestone 2 (allocation domain and optimizer comparison) is complete and
+verified on `main`, starting from commit `dd943a4`.
 
 ## Milestones
 
@@ -18,7 +17,7 @@ seeds exactly five slots, and exposes `/health`.
 | Decision log established | Complete | `decisions.md` |
 | Local Git repository initialized | Complete | Repository on `main` with an initial documentation commit |
 | Python/backend foundation | Complete | 6 tests pass; lint passes; health smoke reports five slots |
-| Optimizer comparison | Not started | GA, PSO, and ACO use one cost interface and benchmark the same scenarios |
+| Optimizer comparison | Complete | 20 focused tests; shared scenario API atomically persists GA/PSO/ACO metrics |
 | Demo entry/exit API | Not started | Simulated RFID flow allocates only free slots and persists sessions |
 | Vision occupancy pipeline | Not started | Five configurable ROIs, heuristic mode, smoothing, and tests work |
 | Prediction comparison | Not started | Shared split evaluates LSTM, GRU, and Transformer with required metrics |
@@ -27,6 +26,17 @@ seeds exactly five slots, and exposes `/health`.
 | End-to-end demo | Not started | Seed, simulated camera, RFID entry, allocation, prediction, and UI run without hardware |
 
 ## Completed This Session
+
+- Added a normalized allocation request/result model and weighted objective
+  shared by deterministic seeded GA, PSO, and ACO implementations.
+- Enforced exactly five candidates and unconditional occupied-slot exclusion;
+  full capacity raises a structured safe error.
+- Added persisted optimizer runs plus `POST /api/allocation/run` and
+  `GET /api/benchmarks/optimizers`.
+- Incorporated code review fixes for nested API schemas, atomic benchmark
+  persistence, genuinely bounded searches, deep immutability, typed stored-run
+  responses, and structured full-capacity behavior.
+- Verified 20 focused optimizer tests and 26 full tests; Ruff passes.
 
 - Implemented the installable FastAPI backend foundation with typed environment
   and YAML configuration.
@@ -48,8 +58,8 @@ seeds exactly five slots, and exposes `/health`.
 
 ## Next Task
 
-Begin Milestone 2 by defining the shared allocation request/result and objective
-interfaces, then write deterministic optimizer contract tests.
+Begin Milestone 3 with API/session/idempotency contracts and failing integration
+tests for entry, retry, exit, full capacity, and occupied-slot safety.
 
 ## Blockers
 
