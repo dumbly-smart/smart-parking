@@ -1,0 +1,48 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+config/rois.json
+secrets.*
+
+# Runtime state and generated ML artifacts
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+data/
+datasets/
+artifacts/
+models/
+runs/
+checkpoints/
+*.h5
+*.keras
+*.tflite
+
+# Notebooks
+.ipynb_checkpoints/
+
+# Firmware builds
+.pio/
+firmware/**/build/
+
+# Editors and operating systems
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
