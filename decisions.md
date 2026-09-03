@@ -124,3 +124,27 @@ Support seeded context/occupancy data, simulated camera updates, simulated RFID 
 ### Consequences
 
 Hardware boundaries must be replaceable adapters rather than embedded in domain logic. The simulated lifecycle becomes the primary integration-test path.
+
+## ADR-007: Typed configuration and standard-library SQLite boundary
+
+- Date: 2026-09-03
+- Status: Accepted
+
+### Context
+
+The backend needs strict startup validation, idempotent schema initialization,
+and a dependency footprint suitable for a five-slot single-process prototype.
+
+### Decision
+
+Use Pydantic Settings for environment configuration, validated YAML for parking
+policy and slot metadata, and a small standard-library `sqlite3` persistence
+boundary. Schema initialization uses idempotent DDL and configured slot upserts.
+Version 1 accepts only `sqlite:///` database URLs.
+
+### Consequences
+
+Invalid slot counts, weights, or unsafe hardware-mode combinations fail at
+startup. SQL transactions remain explicit and testable without an ORM, while a
+future persistence replacement must preserve the service-facing database
+boundary and migration semantics.

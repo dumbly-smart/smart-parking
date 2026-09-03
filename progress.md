@@ -4,7 +4,9 @@ Last updated: 2026-09-03
 
 ## Current Status
 
-Repository initialization is complete. The project is in the design-to-implementation planning stage; no application or firmware code exists yet.
+Milestone 1 (backend foundation) is complete and verified on `main`. The service
+loads typed configuration, initializes all planned SQLite tables idempotently,
+seeds exactly five slots, and exposes `/health`.
 
 ## Milestones
 
@@ -15,7 +17,7 @@ Repository initialization is complete. The project is in the design-to-implement
 | Agent workflow documented | Complete | `agents.md` |
 | Decision log established | Complete | `decisions.md` |
 | Local Git repository initialized | Complete | Repository on `main` with an initial documentation commit |
-| Python/backend foundation | Not started | App boots, configuration loads, SQLite seeds five slots, tests pass |
+| Python/backend foundation | Complete | 6 tests pass; lint passes; health smoke reports five slots |
 | Optimizer comparison | Not started | GA, PSO, and ACO use one cost interface and benchmark the same scenarios |
 | Demo entry/exit API | Not started | Simulated RFID flow allocates only free slots and persists sessions |
 | Vision occupancy pipeline | Not started | Five configurable ROIs, heuristic mode, smoothing, and tests work |
@@ -25,6 +27,16 @@ Repository initialization is complete. The project is in the design-to-implement
 | End-to-end demo | Not started | Seed, simulated camera, RFID entry, allocation, prediction, and UI run without hardware |
 
 ## Completed This Session
+
+- Implemented the installable FastAPI backend foundation with typed environment
+  and YAML configuration.
+- Added all eight planned SQLite tables, transaction handling, and idempotent
+  five-slot initialization.
+- Added `/health`, isolated tests, developer commands, setup documentation, and
+  ADR-007.
+- Verified with `.venv/bin/python -m pytest` (6 passed),
+  `.venv/bin/python -m ruff check .` (passed), `git diff --check` (passed), and a
+  fresh TestClient health smoke response (`status=ok`, `slot_count=5`).
 
 - Reviewed the supplied implementation design.
 - Established architectural, agent, progress, and decision documentation.
@@ -36,7 +48,8 @@ Repository initialization is complete. The project is in the design-to-implement
 
 ## Next Task
 
-Create a detailed implementation plan for the first vertical slice: Python project scaffolding, typed configuration, SQLite schema/initialization, five seeded slots, and a `/health` endpoint with tests.
+Begin Milestone 2 by defining the shared allocation request/result and objective
+interfaces, then write deterministic optimizer contract tests.
 
 ## Blockers
 
