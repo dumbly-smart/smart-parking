@@ -32,6 +32,7 @@ Repository initialization is complete. The project is in the design-to-implement
 - Confirmed the GitHub plugin is already available.
 - Installed the curated `jupyter-notebook` Codex skill for ML data exploration and model comparison work.
 - Initialized the repository on the `main` branch and created the initial commit.
+- Expanded `agents.md` with verified commit, safe push, and structured session-handoff procedures.
 
 ## Next Task
 

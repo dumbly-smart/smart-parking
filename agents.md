@@ -56,13 +56,55 @@ Each stage should leave a runnable, tested state. Avoid scaffolding later stages
 
 Until project tooling is created, documentation changes must pass whitespace checks and internal-link/path review. Once the Python project exists, every change should run the relevant focused tests plus the full configured test and lint commands. Firmware changes must compile for their target board and include reproducible build instructions.
 
-## Progress Handoff
+## Commit Workflow
+
+Create commits only after the requested change is complete and verified.
+
+1. Run `git status --short --branch` and confirm the current branch and pre-existing user changes.
+2. Review `git diff` and keep unrelated changes out of the commit.
+3. Run the focused tests for the changed behavior, followed by the repository's configured full test and lint commands when available.
+4. Update `progress.md` and, when the change establishes or supersedes an architectural choice, `decisions.md`.
+5. Stage explicit files with `git add <path>...`; do not use broad staging when unrelated changes are present.
+6. Review `git diff --cached --check`, `git diff --cached --stat`, and the complete cached diff before committing.
+7. Make one logical commit with a concise imperative message, preferably using a conventional prefix such as `feat:`, `fix:`, `test:`, `docs:`, `refactor:`, or `chore:`.
+8. Confirm the commit with `git show --stat --oneline HEAD` and ensure the remaining working-tree state is understood.
+
+Do not rewrite, amend, squash, or discard commits or changes created by someone else unless the user explicitly requests it. Never bypass failing checks just to create a commit.
+
+## Push Workflow
+
+Push only when the user requested it or the agreed workflow explicitly includes it.
+
+1. Run `git remote -v` and confirm the intended remote; do not invent or replace a remote URL.
+2. Run `git status --short --branch` and confirm that the intended commits and branch are ready.
+3. Check the upstream with `git rev-parse --abbrev-ref --symbolic-full-name '@{upstream}'`.
+4. If an upstream exists, use a normal `git push`. If none exists and the intended remote is `origin`, use `git push --set-upstream origin HEAD`.
+5. Report the pushed branch and commit hash, then rerun `git status --short --branch`.
+
+Never force-push, delete a remote branch, push secrets, or push unrelated local commits without explicit user authorization. If no remote exists, stop after the local commit and report that a remote URL or repository is required.
+
+## Session Handoff
 
 Before ending a work session, update `progress.md` with:
 
 - what changed,
 - what was verified,
+- the active branch and latest relevant commit,
 - the next concrete task,
 - any blocker or unresolved decision.
 
-Keep entries factual and concise; Git remains the detailed history.
+Then provide a handoff using this structure:
+
+```markdown
+## Session Handoff
+
+- Objective: <the requested outcome>
+- Completed: <files or behavior changed>
+- Verification: <commands run and their results>
+- Git state: <branch, latest commit, clean/dirty worktree, push status>
+- Decisions: <ADR entries added or "None">
+- Blockers: <specific blocker or "None">
+- Next step: <one concrete action>
+```
+
+Keep the handoff factual and concise. Do not claim tests, commits, or pushes succeeded without fresh command output. Git remains the detailed history, while `progress.md` carries durable context across sessions.
