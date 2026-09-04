@@ -1,0 +1,14 @@
+{
+  "heuristic": {
+    "edge_threshold": 0.12,
+    "minimum_confidence": 0.70,
+    "required_consecutive_frames": 3
+  },
+  "slots": [
+    {"slot_id": 1, "x": 0, "y": 0, "width": 160, "height": 120},
+    {"slot_id": 2, "x": 160, "y": 0, "width": 160, "height": 120},
+    {"slot_id": 3, "x": 320, "y": 0, "width": 160, "height": 120},
+    {"slot_id": 4, "x": 480, "y": 0, "width": 160, "height": 120},
+    {"slot_id": 5, "x": 640, "y": 0, "width": 160, "height": 120}
+  ]
+}

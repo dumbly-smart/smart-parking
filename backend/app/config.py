@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Literal
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from vision.models import RoiConfig
 
 
 class ObjectiveWeights(BaseModel):
@@ -60,11 +63,13 @@ class Settings(BaseSettings):
     mode: Literal["demo", "hardware"] = "demo"
     database_url: str = "sqlite:///./data/parking.db"
     parking_config_path: Path = Path("config/parking.yaml")
-    roi_config_path: Path = Path("config/rois.json")
+    roi_config_path: Path = Path("config/rois.example.json")
+    camera_max_image_bytes: int = Field(default=5 * 1024 * 1024, gt=0)
     selected_optimizer: Literal["ga", "pso", "aco"] = "ga"
     selected_predictor: Literal["baseline", "lstm", "gru", "transformer"] = "baseline"
     hardware_enabled: bool = False
     _parking: ParkingConfig = PrivateAttr()
+    _roi: RoiConfig = PrivateAttr()
 
     def __init__(self, **values: object) -> None:
         super().__init__(**values)
@@ -75,12 +80,30 @@ class Settings(BaseSettings):
         if not isinstance(raw, dict):
             raise ValueError("parking configuration must be a mapping")
         self._parking = ParkingConfig.model_validate(raw)
+        try:
+            raw_roi = json.loads(self.roi_config_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise ValueError(f"cannot load ROI configuration: {exc}") from exc
+        if not isinstance(raw_roi, dict):
+            raise ValueError("ROI configuration must be a mapping")
+        roi = RoiConfig.model_validate(raw_roi)
+        roi_regions = {region.slot_id: region for region in roi.slots}
+        parking_slot_ids = [slot.id for slot in self._parking.slots]
+        if set(roi_regions) != set(parking_slot_ids):
+            raise ValueError("ROI slot ids must match parking slot ids exactly")
+        self._roi = roi.model_copy(
+            update={"slots": tuple(roi_regions[slot_id] for slot_id in parking_slot_ids)}
+        )
         if self.mode == "hardware" and not self.hardware_enabled:
             raise ValueError("hardware mode requires SMART_PARKING_HARDWARE_ENABLED=true")
 
     @property
     def parking(self) -> ParkingConfig:
         return self._parking
+
+    @property
+    def roi(self) -> RoiConfig:
+        return self._roi
 
     @property
     def database_path(self) -> Path:

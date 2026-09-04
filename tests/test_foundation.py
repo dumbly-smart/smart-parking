@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sqlite3
 from pathlib import Path
 
@@ -80,11 +81,29 @@ def make_settings(tmp_path: Path) -> Settings:
 
 def make_settings_for_ids(tmp_path: Path, slot_ids: list[int]) -> Settings:
     config_path = tmp_path / "parking.yaml"
+    roi_path = tmp_path / "rois.json"
     write_config(config_path, slot_ids)
+    roi_path.write_text(
+        json.dumps(
+            {
+                "heuristic": {
+                    "edge_threshold": 0.12,
+                    "minimum_confidence": 0.70,
+                    "required_consecutive_frames": 3,
+                },
+                "slots": [
+                    {"slot_id": slot_id, "x": 0, "y": 0, "width": 1, "height": 1}
+                    for slot_id in slot_ids
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
     return Settings(
         mode="demo",
         database_url=f"sqlite:///{tmp_path / 'parking.db'}",
         parking_config_path=config_path,
+        roi_config_path=roi_path,
     )
 
 
