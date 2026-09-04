@@ -21,7 +21,7 @@ Milestone 4 (browser dashboard) is complete and verified on
 | Demo entry/exit API | Complete | 44 tests pass; entry, retry, exit, conflicts, rollback, and status are covered |
 | Vision occupancy pipeline | Not started | Five configurable ROIs, heuristic mode, smoothing, and tests work |
 | Prediction comparison | Not started | Shared split evaluates LSTM, GRU, and Transformer with required metrics |
-| Dashboard | Complete | 49 tests pass; real-browser entry/exit, conflict, desktop, and mobile checks pass |
+| Dashboard | Complete | 50 tests pass; real-browser entry/exit, conflict, desktop, and mobile checks pass |
 | Firmware integration | Not started | Both sketches build and complete the documented hardware flow |
 | End-to-end demo | Not started | Seed, simulated camera, RFID entry, allocation, prediction, and UI run without hardware |
 
@@ -34,11 +34,13 @@ Milestone 4 (browser dashboard) is complete and verified on
   persisted optimizer-run table.
 - Made entry, exit, and lifecycle errors persist beside the controls; a
   successful exit now immediately frees the bay and removes the active vehicle.
+- Serialized operation-triggered refreshes behind any active polling request so
+  entry and exit cannot leave the visible parking state stale.
 - Added accessible landmarks, labels, keyboard focus, live announcements,
   reduced-motion support, and responsive desktop/mobile layouts.
 - Verified the real browser flow from five free slots through entry and exit,
   including friendly conflict feedback and zero unexpected console errors.
-- Verified 49 tests, Ruff, and whitespace checks.
+- Verified 50 tests, Ruff, and whitespace checks.
 
 - Added atomic simulated RFID entry and exit APIs with database-backed retry
   replay and a shared idempotency-key namespace.

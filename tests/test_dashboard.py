@@ -90,3 +90,10 @@ def test_dashboard_places_operation_feedback_and_vehicles_by_controls(
     assert document.index('id="operation-result"') < document.index(
         'id="current-vehicles"'
     )
+
+
+def test_operation_refresh_waits_for_poll_then_fetches_fresh_state() -> None:
+    script = Path("backend/app/dashboard/dashboard.js").read_text(encoding="utf-8")
+
+    assert "await refreshAfterOperation();" in script
+    assert "if (isRefreshing) return;" not in script

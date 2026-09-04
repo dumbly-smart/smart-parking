@@ -25,7 +25,7 @@ const messages = {
   idempotency_conflict: "This operation conflicts with a previous request.",
 };
 
-let isRefreshing = false;
+let refreshPromise = null;
 let isOffline = false;
 
 function node(tag, className, text) {
@@ -206,7 +206,7 @@ async function submitVehicleOperation(operation) {
       operation === "entry" ? "Vehicle entered" : "Vehicle exited",
       message,
     );
-    await refreshDashboard();
+    await refreshAfterOperation();
     elements.uid.focus();
     elements.uid.select();
   } catch (error) {
@@ -218,8 +218,21 @@ async function submitVehicleOperation(operation) {
 }
 
 async function refreshDashboard() {
-  if (isRefreshing) return;
-  isRefreshing = true;
+  if (refreshPromise) return refreshPromise;
+  refreshPromise = performRefresh();
+  try {
+    await refreshPromise;
+  } finally {
+    refreshPromise = null;
+  }
+}
+
+async function refreshAfterOperation() {
+  if (refreshPromise) await refreshPromise;
+  await refreshDashboard();
+}
+
+async function performRefresh() {
   try {
     const [status, benchmarks] = await Promise.all([
       apiRequest("/api/parking/status"),
@@ -239,8 +252,6 @@ async function refreshDashboard() {
     setConnection(false);
     if (!isOffline) addActivity("error", "Backend offline", error.message);
     isOffline = true;
-  } finally {
-    isRefreshing = false;
   }
 }
 
