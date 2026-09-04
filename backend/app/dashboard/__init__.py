@@ -1,0 +1,1 @@
+"""Static browser dashboard assets."""
