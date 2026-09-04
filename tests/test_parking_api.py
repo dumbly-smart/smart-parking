@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
@@ -242,3 +243,148 @@ def test_entry_persistence_failure_rolls_back_every_write(tmp_path: Path) -> Non
         "allocations": 0,
         "optimizer_runs": 0,
     }
+
+
+def test_exit_closes_session_frees_slot_and_replays_original_result(tmp_path: Path) -> None:
+    settings = make_settings(tmp_path)
+    with TestClient(create_app(settings)) as client:
+        entered = client.post(
+            "/api/vehicle/entry",
+            json={"rfid_uid": "CARD-1", "idempotency_key": "entry-1"},
+        ).json()
+        exited = client.post(
+            "/api/vehicle/exit",
+            json={"rfid_uid": "CARD-1", "idempotency_key": "exit-1"},
+        )
+        replay = client.post(
+            "/api/vehicle/exit",
+            json={"rfid_uid": "CARD-1", "idempotency_key": "exit-1"},
+        )
+
+    assert exited.status_code == 200
+    assert exited.json()["slot_id"] == entered["slot_id"]
+    assert exited.json()["gate_action"] == "open"
+    assert exited.json()["exited_at"].endswith("Z")
+    assert replay.json() == exited.json()
+    with sqlite3.connect(settings.database_path) as connection:
+        session = connection.execute(
+            "SELECT exited_at, exit_idempotency_key FROM parking_sessions"
+        ).fetchone()
+        occupied = connection.execute(
+            "SELECT occupied FROM parking_slots WHERE id = ?", (entered["slot_id"],)
+        ).fetchone()[0]
+    assert session == (exited.json()["exited_at"], "exit-1")
+    assert occupied == 0
+
+
+def test_exit_without_active_session_is_rejected(tmp_path: Path) -> None:
+    settings = make_settings(tmp_path)
+    with TestClient(create_app(settings), raise_server_exceptions=False) as client:
+        response = client.post(
+            "/api/vehicle/exit",
+            json={"rfid_uid": "CARD-1", "idempotency_key": "exit-1"},
+        )
+
+    assert response.status_code == 409
+    assert response.json()["detail"]["code"] == "vehicle_not_parked"
+
+
+def test_entry_key_cannot_be_reused_for_exit(tmp_path: Path) -> None:
+    settings = make_settings(tmp_path)
+    with TestClient(create_app(settings), raise_server_exceptions=False) as client:
+        client.post(
+            "/api/vehicle/entry",
+            json={"rfid_uid": "CARD-1", "idempotency_key": "shared-1"},
+        )
+        response = client.post(
+            "/api/vehicle/exit",
+            json={"rfid_uid": "CARD-1", "idempotency_key": "shared-1"},
+        )
+
+    assert response.status_code == 409
+    assert response.json()["detail"]["code"] == "idempotency_conflict"
+
+
+def test_exit_key_cannot_be_reused_for_entry(tmp_path: Path) -> None:
+    settings = make_settings(tmp_path)
+    with TestClient(create_app(settings)) as client:
+        client.post(
+            "/api/vehicle/entry",
+            json={"rfid_uid": "CARD-1", "idempotency_key": "entry-1"},
+        )
+        client.post(
+            "/api/vehicle/exit",
+            json={"rfid_uid": "CARD-1", "idempotency_key": "shared-1"},
+        )
+        response = client.post(
+            "/api/vehicle/entry",
+            json={"rfid_uid": "CARD-2", "idempotency_key": "shared-1"},
+        )
+
+    assert response.status_code == 409
+    assert response.json()["detail"]["code"] == "idempotency_conflict"
+
+
+def test_exit_key_cannot_be_reused_for_another_vehicle(tmp_path: Path) -> None:
+    settings = make_settings(tmp_path)
+    with TestClient(create_app(settings)) as client:
+        for card, key in (("CARD-1", "entry-1"), ("CARD-2", "entry-2")):
+            client.post(
+                "/api/vehicle/entry",
+                json={"rfid_uid": card, "idempotency_key": key},
+            )
+        client.post(
+            "/api/vehicle/exit",
+            json={"rfid_uid": "CARD-1", "idempotency_key": "exit-1"},
+        )
+        response = client.post(
+            "/api/vehicle/exit",
+            json={"rfid_uid": "CARD-2", "idempotency_key": "exit-1"},
+        )
+
+    assert response.status_code == 409
+    assert response.json()["detail"]["code"] == "idempotency_conflict"
+
+
+def test_status_returns_five_ordered_slots_with_active_session(tmp_path: Path) -> None:
+    settings = make_settings(tmp_path)
+    with TestClient(create_app(settings)) as client:
+        entry = client.post(
+            "/api/vehicle/entry",
+            json={"rfid_uid": "CARD-1", "idempotency_key": "entry-1"},
+        ).json()
+        response = client.get("/api/parking/status")
+
+    assert response.status_code == 200
+    slots = response.json()["slots"]
+    assert [slot["id"] for slot in slots] == [1, 2, 3, 4, 5]
+    active = next(slot for slot in slots if slot["id"] == entry["slot_id"])
+    assert active["occupied"] is True
+    assert active["active_session_id"] == entry["session_id"]
+    assert active["rfid_uid"] == "CARD-1"
+    assert all(slot["updated_at"].endswith("Z") for slot in slots)
+
+
+def test_concurrent_entries_receive_different_slots(tmp_path: Path) -> None:
+    settings = make_settings(tmp_path)
+    with TestClient(create_app(settings)) as client:
+        def enter(card_number: int) -> tuple[int, int]:
+            response = client.post(
+                "/api/vehicle/entry",
+                json={
+                    "rfid_uid": f"CARD-{card_number}",
+                    "idempotency_key": f"entry-{card_number}",
+                },
+            )
+            return response.status_code, response.json()["slot_id"]
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            results = list(executor.map(enter, (1, 2)))
+
+    assert {status for status, _ in results} == {200}
+    assert len({slot_id for _, slot_id in results}) == 2
+    with sqlite3.connect(settings.database_path) as connection:
+        active_count = connection.execute(
+            "SELECT COUNT(*) FROM parking_sessions WHERE exited_at IS NULL"
+        ).fetchone()[0]
+    assert active_count == 2

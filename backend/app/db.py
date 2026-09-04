@@ -4,10 +4,18 @@ import json
 import sqlite3
 from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
+from datetime import UTC, datetime
 from pathlib import Path
 
 from backend.app.config import SlotConfig
-from backend.app.models.parking import EntryResponse, ParkingConflict, ParkingSlotRecord
+from backend.app.models.parking import (
+    EntryResponse,
+    ExitResponse,
+    ParkingConflict,
+    ParkingSlotRecord,
+    ParkingSlotStatus,
+    ParkingStatusResponse,
+)
 from optimization.models import AllocationResult, PersistedOptimizerRun
 
 SCHEMA = """
@@ -294,6 +302,97 @@ class Database:
                 entered_at=stored["entered_at"],
             )
         return response
+
+    def exit_vehicle(self, rfid_uid: str, idempotency_key: str) -> ExitResponse:
+        with self.connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            entry_key = connection.execute(
+                "SELECT 1 FROM parking_sessions WHERE entry_idempotency_key = ?",
+                (idempotency_key,),
+            ).fetchone()
+            if entry_key is not None:
+                raise ParkingConflict(
+                    "idempotency_conflict",
+                    "idempotency key belongs to a different operation",
+                )
+
+            replay = connection.execute(
+                """
+                SELECT ps.id AS session_id, v.rfid_uid, ps.slot_id,
+                       s.name AS slot_name, ps.exited_at
+                FROM parking_sessions AS ps
+                JOIN vehicles AS v ON v.id = ps.vehicle_id
+                JOIN parking_slots AS s ON s.id = ps.slot_id
+                WHERE ps.exit_idempotency_key = ?
+                """,
+                (idempotency_key,),
+            ).fetchone()
+            if replay is not None:
+                if replay["rfid_uid"] != rfid_uid:
+                    raise ParkingConflict(
+                        "idempotency_conflict",
+                        "idempotency key belongs to a different request",
+                    )
+                return ExitResponse.model_validate(dict(replay))
+
+            active = connection.execute(
+                """
+                SELECT ps.id AS session_id, ps.slot_id, s.name AS slot_name
+                FROM parking_sessions AS ps
+                JOIN vehicles AS v ON v.id = ps.vehicle_id
+                JOIN parking_slots AS s ON s.id = ps.slot_id
+                WHERE v.rfid_uid = ? AND ps.exited_at IS NULL
+                """,
+                (rfid_uid,),
+            ).fetchone()
+            if active is None:
+                raise ParkingConflict(
+                    "vehicle_not_parked",
+                    "vehicle does not have an active parking session",
+                )
+
+            exited_at = datetime.now(UTC).isoformat(timespec="milliseconds").replace(
+                "+00:00", "Z"
+            )
+            connection.execute(
+                """
+                UPDATE parking_sessions
+                SET exited_at = ?, exit_idempotency_key = ?
+                WHERE id = ? AND exited_at IS NULL
+                """,
+                (exited_at, idempotency_key, active["session_id"]),
+            )
+            connection.execute(
+                """
+                UPDATE parking_slots SET occupied = 0, updated_at = ? WHERE id = ?
+                """,
+                (exited_at, active["slot_id"]),
+            )
+            response = ExitResponse(
+                session_id=active["session_id"],
+                rfid_uid=rfid_uid,
+                slot_id=active["slot_id"],
+                slot_name=active["slot_name"],
+                exited_at=exited_at,
+            )
+        return response
+
+    def parking_status(self) -> ParkingStatusResponse:
+        with self.connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT s.id, s.name, s.walking_distance, s.zone, s.occupied,
+                       s.updated_at, ps.id AS active_session_id, v.rfid_uid
+                FROM parking_slots AS s
+                LEFT JOIN parking_sessions AS ps
+                    ON ps.slot_id = s.id AND ps.exited_at IS NULL
+                LEFT JOIN vehicles AS v ON v.id = ps.vehicle_id
+                ORDER BY s.id
+                """
+            ).fetchall()
+        return ParkingStatusResponse(
+            slots=tuple(ParkingSlotStatus.model_validate(dict(row)) for row in rows)
+        )
 
     def save_optimizer_results(self, results: Sequence[AllocationResult]) -> None:
         with self.connect() as connection:
