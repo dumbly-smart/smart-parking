@@ -28,6 +28,8 @@ data/
 datasets/
 artifacts/
 models/
+!backend/app/models/
+!backend/app/models/*.py
 runs/
 checkpoints/
 *.h5

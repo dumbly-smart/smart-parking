@@ -34,6 +34,7 @@ CREATE TABLE IF NOT EXISTS parking_sessions (
     entry_idempotency_key TEXT NOT NULL UNIQUE,
     entered_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
     exited_at TEXT,
+    exit_idempotency_key TEXT,
     CHECK (exited_at IS NULL OR exited_at >= entered_at)
 );
 CREATE UNIQUE INDEX IF NOT EXISTS one_active_session_per_vehicle
@@ -119,6 +120,21 @@ class Database:
             raise ValueError("database initialization requires exactly five slots")
         with self.connect() as connection:
             connection.executescript(SCHEMA)
+            columns = {
+                row["name"]
+                for row in connection.execute("PRAGMA table_info(parking_sessions)")
+            }
+            if "exit_idempotency_key" not in columns:
+                connection.execute(
+                    "ALTER TABLE parking_sessions ADD COLUMN exit_idempotency_key TEXT"
+                )
+            connection.execute(
+                """
+                CREATE UNIQUE INDEX IF NOT EXISTS unique_exit_idempotency_key
+                ON parking_sessions(exit_idempotency_key)
+                WHERE exit_idempotency_key IS NOT NULL
+                """
+            )
             connection.executemany(
                 """
                 INSERT INTO parking_slots (id, name, walking_distance, zone)
