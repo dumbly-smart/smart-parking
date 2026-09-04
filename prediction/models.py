@@ -68,10 +68,15 @@ class PreprocessingConfig:
     max_carry_intervals: int = 3
 
     def __post_init__(self) -> None:
-        for name in ("interval_minutes", "lookback_steps", "horizon_steps"):
-            value = getattr(self, name)
-            if value <= 0:
-                raise PredictionDataError("invalid_config", f"{name} must be positive")
+        for name, required in (
+            ("interval_minutes", 5),
+            ("lookback_steps", 12),
+            ("horizon_steps", 1),
+        ):
+            if getattr(self, name) != required:
+                raise PredictionDataError(
+                    "invalid_config", f"{name} must equal the fixed value {required}"
+                )
         for name in ("train_fraction", "validation_fraction"):
             value = getattr(self, name)
             if not 0 < value < 1:

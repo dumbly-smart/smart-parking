@@ -455,8 +455,11 @@ def test_preprocessing_config_has_approved_defaults() -> None:
     ("overrides", "code"),
     [
         ({"interval_minutes": 0}, "invalid_config"),
+        ({"interval_minutes": 10}, "invalid_config"),
         ({"lookback_steps": 0}, "invalid_config"),
+        ({"lookback_steps": 4}, "invalid_config"),
         ({"horizon_steps": 0}, "invalid_config"),
+        ({"horizon_steps": 3}, "invalid_config"),
         ({"train_fraction": 0.9, "validation_fraction": 0.2}, "invalid_config"),
         ({"max_carry_intervals": -1}, "invalid_config"),
     ],
