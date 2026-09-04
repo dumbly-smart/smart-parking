@@ -56,3 +56,22 @@ def test_dashboard_assets_are_served(
 
     assert response.status_code == 200
     assert response.headers["content-type"].startswith(content_type)
+
+
+def test_dashboard_contains_accessible_demo_controls(tmp_path: Path) -> None:
+    with TestClient(create_app(make_settings(tmp_path))) as client:
+        document = client.get("/dashboard").text
+
+    for expected in (
+        '<main id="dashboard"',
+        'id="parking-grid"',
+        'id="rfid-form"',
+        'for="rfid-uid"',
+        'id="entry-button"',
+        'id="exit-button"',
+        'id="latest-assignment"',
+        'id="activity-list"',
+        'id="benchmark-body"',
+        'id="announcement" role="status" aria-live="polite"',
+    ):
+        assert expected in document

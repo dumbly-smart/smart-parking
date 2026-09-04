@@ -3,11 +3,163 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#07100f">
     <title>Smart Parking Control</title>
     <link rel="stylesheet" href="/static/dashboard/dashboard.css">
     <script src="/static/dashboard/dashboard.js" defer></script>
   </head>
   <body>
-    <main id="dashboard"><h1>Smart Parking</h1></main>
+    <a class="skip-link" href="#dashboard">Skip to dashboard</a>
+    <div class="ambient ambient--one" aria-hidden="true"></div>
+    <div class="ambient ambient--two" aria-hidden="true"></div>
+
+    <header class="topbar">
+      <a class="brand" href="/dashboard" aria-label="Smart Parking dashboard">
+        <span class="brand__mark" aria-hidden="true">P</span>
+        <span>
+          <strong>SMART PARKING</strong>
+          <small>CONTROL SYSTEM</small>
+        </span>
+      </a>
+      <div class="system-meta">
+        <span class="mode-badge">DEMO MODE</span>
+        <span id="connection-status" class="connection status--connecting">
+          <span class="connection__dot" aria-hidden="true"></span>
+          <span class="connection__label">Connecting</span>
+        </span>
+        <span class="refresh-time">Updated <time id="last-refresh">—</time></span>
+      </div>
+    </header>
+
+    <main id="dashboard" class="dashboard">
+      <section class="hero" aria-labelledby="page-title">
+        <div>
+          <p class="eyebrow">Live facility overview</p>
+          <h1 id="page-title">Parking operations,<br><em>at a glance.</em></h1>
+        </div>
+        <p class="hero__copy">Monitor five smart bays, simulate RFID access, and watch allocation decisions update in real time.</p>
+      </section>
+
+      <section class="metrics" aria-label="Parking summary">
+        <article class="metric">
+          <span class="metric__label">Total capacity</span>
+          <strong id="total-count">5</strong>
+          <span class="metric__unit">spaces</span>
+        </article>
+        <article class="metric metric--available">
+          <span class="metric__label">Available now</span>
+          <strong id="available-count">—</strong>
+          <span class="metric__unit">ready</span>
+        </article>
+        <article class="metric metric--occupied">
+          <span class="metric__label">Occupied</span>
+          <strong id="occupied-count">—</strong>
+          <span class="metric__unit">in use</span>
+        </article>
+        <article class="metric">
+          <span class="metric__label">Active sessions</span>
+          <strong id="active-count">—</strong>
+          <span class="metric__unit">vehicles</span>
+        </article>
+      </section>
+
+      <section class="panel parking-panel" aria-labelledby="parking-title">
+        <div class="panel__header">
+          <div>
+            <p class="section-index">01 / PARKING FLOOR</p>
+            <h2 id="parking-title">Live bay status</h2>
+          </div>
+          <div class="legend" aria-label="Status legend">
+            <span><i class="legend__dot legend__dot--free"></i>Free</span>
+            <span><i class="legend__dot legend__dot--occupied"></i>Occupied</span>
+          </div>
+        </div>
+        <div id="parking-grid" class="parking-grid" aria-live="polite">
+          <article class="slot slot--loading"><span>Loading bay data…</span></article>
+        </div>
+      </section>
+
+      <div class="operations-grid">
+        <section class="panel control-panel" aria-labelledby="control-title">
+          <div class="panel__header">
+            <div>
+              <p class="section-index">02 / ACCESS CONTROL</p>
+              <h2 id="control-title">Simulate RFID</h2>
+            </div>
+            <span class="scan-icon" aria-hidden="true">)))</span>
+          </div>
+          <form id="rfid-form" class="rfid-form">
+            <label for="rfid-uid">Vehicle RFID identifier</label>
+            <div class="input-wrap">
+              <span aria-hidden="true">#</span>
+              <input id="rfid-uid" name="rfid_uid" type="text" maxlength="128" placeholder="e.g. DEMO-CARD-01" autocomplete="off" required>
+            </div>
+            <p class="field-hint">Use the same ID to enter and exit the facility.</p>
+            <div class="button-row">
+              <button id="entry-button" class="button button--primary" type="submit" data-operation="entry">
+                <span>Simulate entry</span><b aria-hidden="true">→</b>
+              </button>
+              <button id="exit-button" class="button button--secondary" type="submit" data-operation="exit">
+                <span>Simulate exit</span><b aria-hidden="true">←</b>
+              </button>
+            </div>
+          </form>
+        </section>
+
+        <section class="panel assignment-panel" aria-labelledby="assignment-title">
+          <div class="panel__header">
+            <div>
+              <p class="section-index">03 / LATEST DECISION</p>
+              <h2 id="assignment-title">Assignment</h2>
+            </div>
+          </div>
+          <div id="latest-assignment" class="empty-state">
+            <span class="empty-state__icon" aria-hidden="true">P</span>
+            <strong>Ready for arrival</strong>
+            <p>Submit an RFID entry to see the optimizer's parking decision.</p>
+          </div>
+        </section>
+      </div>
+
+      <div class="insights-grid">
+        <section class="panel activity-panel" aria-labelledby="activity-title">
+          <div class="panel__header">
+            <div>
+              <p class="section-index">04 / EVENT STREAM</p>
+              <h2 id="activity-title">Recent activity</h2>
+            </div>
+          </div>
+          <ol id="activity-list" class="activity-list">
+            <li class="activity activity--neutral">
+              <span class="activity__mark" aria-hidden="true"></span>
+              <div><strong>Dashboard started</strong><small>Waiting for facility events</small></div>
+              <time>now</time>
+            </li>
+          </ol>
+        </section>
+
+        <section class="panel benchmark-panel" aria-labelledby="benchmark-title">
+          <div class="panel__header">
+            <div>
+              <p class="section-index">05 / OPTIMIZER LOG</p>
+              <h2 id="benchmark-title">Allocation runs</h2>
+            </div>
+            <a class="api-link" href="/docs">API docs <span aria-hidden="true">↗</span></a>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Algorithm</th><th>Slot</th><th>Cost</th><th>Runtime</th></tr></thead>
+              <tbody id="benchmark-body"><tr><td colspan="4">Loading optimizer history…</td></tr></tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+    </main>
+
+    <footer>
+      <span>SMART PARKING / FIVE-BAY PROTOTYPE</span>
+      <span>HARDWARE-INDEPENDENT DEMONSTRATION</span>
+    </footer>
+    <div id="announcement" role="status" aria-live="polite" class="sr-only"></div>
   </body>
 </html>
