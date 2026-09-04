@@ -12,10 +12,10 @@ const elements = {
   uid: document.querySelector("#rfid-uid"),
   entryButton: document.querySelector("#entry-button"),
   exitButton: document.querySelector("#exit-button"),
-  assignment: document.querySelector("#latest-assignment"),
+  operationResult: document.querySelector("#operation-result"),
+  currentVehicles: document.querySelector("#current-vehicles"),
   activity: document.querySelector("#activity-list"),
   benchmarks: document.querySelector("#benchmark-body"),
-  announcement: document.querySelector("#announcement"),
 };
 
 const messages = {
@@ -69,6 +69,7 @@ function renderStatus(payload) {
   elements.available.textContent = String(slots.length - occupied);
   elements.occupied.textContent = String(occupied);
   elements.active.textContent = String(active);
+  renderCurrentVehicles(slots);
 
   const cards = slots.map((slot) => {
     const card = node("article", `slot slot--${slot.occupied ? "occupied" : "free"}`);
@@ -98,42 +99,32 @@ function renderStatus(payload) {
   elements.parkingGrid.replaceChildren(...cards);
 }
 
-function detail(label, value) {
-  const wrapper = node("div", "detail");
-  wrapper.append(node("span", "", label), node("strong", "", value));
-  return wrapper;
+function renderCurrentVehicles(slots) {
+  const activeSlots = slots.filter((slot) => slot.active_session_id !== null);
+  if (!activeSlots.length) {
+    elements.currentVehicles.replaceChildren(
+      node("p", "vehicle-list__empty", "No active vehicles."),
+    );
+    return;
+  }
+  const rows = activeSlots.map((slot) => {
+    const row = node("div", "vehicle-row");
+    const identity = node("div");
+    identity.append(
+      node("strong", "", slot.rfid_uid),
+      node("span", "", `Active session #${slot.active_session_id}`),
+    );
+    const location = node("div", "vehicle-row__location");
+    location.append(node("strong", "", slot.name), node("span", "", slot.zone));
+    row.append(identity, location);
+    return row;
+  });
+  elements.currentVehicles.replaceChildren(...rows);
 }
 
-function renderAssignment(payload) {
-  const wrapper = node("div", "assignment");
-  const slot = node("div", "assignment__slot");
-  slot.append(node("small", "", "Assigned bay"), node("strong", "", payload.slot_name));
-  const details = node("div", "assignment__details");
-  details.append(
-    detail("RFID", payload.rfid_uid),
-    detail("Optimizer", payload.optimizer.toUpperCase()),
-    detail("Allocation cost", Number(payload.allocation_cost).toFixed(3)),
-    detail("Gate action", payload.gate_action.toUpperCase()),
-  );
-  wrapper.append(slot, details);
-  elements.assignment.className = "assignment-host";
-  elements.assignment.replaceChildren(wrapper);
-}
-
-function renderDeparture(payload) {
-  const wrapper = node("div", "assignment");
-  const slot = node("div", "assignment__slot");
-  slot.append(node("small", "", "Released bay"), node("strong", "", payload.slot_name));
-  const details = node("div", "assignment__details");
-  details.append(
-    detail("RFID", payload.rfid_uid),
-    detail("Session", `#${payload.session_id}`),
-    detail("Status", "DEPARTED"),
-    detail("Gate action", payload.gate_action.toUpperCase()),
-  );
-  wrapper.append(slot, details);
-  elements.assignment.className = "assignment-host";
-  elements.assignment.replaceChildren(wrapper);
+function renderOperationResult(kind, message) {
+  elements.operationResult.className = `operation-result operation-result--${kind}`;
+  elements.operationResult.textContent = message;
 }
 
 function renderBenchmarks(payload) {
@@ -171,7 +162,6 @@ function addActivity(kind, title, description) {
   item.append(copy, timestamp);
   elements.activity.prepend(item);
   while (elements.activity.children.length > 6) elements.activity.lastElementChild.remove();
-  elements.announcement.textContent = `${title}. ${description}`;
 }
 
 function operationKey(operation) {
@@ -191,26 +181,36 @@ async function submitVehicleOperation(operation) {
   elements.uid.value = rfidUid;
   if (!rfidUid) {
     const message = "Enter an RFID identifier before simulating access.";
+    renderOperationResult("error", message);
     addActivity("error", "RFID required", message);
     elements.uid.focus();
     return;
   }
 
   setBusy(true);
+  renderOperationResult(
+    "loading",
+    operation === "entry" ? "Processing entry…" : "Processing exit…",
+  );
   try {
     const payload = await apiRequest(`/api/vehicle/${operation}`, {
       method: "POST",
       body: JSON.stringify({ rfid_uid: rfidUid, idempotency_key: operationKey(operation) }),
     });
-    if (operation === "entry") {
-      renderAssignment(payload);
-      addActivity("success", "Vehicle admitted", `${rfidUid} assigned to ${payload.slot_name}`);
-    } else {
-      renderDeparture(payload);
-      addActivity("success", "Vehicle departed", `${rfidUid} released ${payload.slot_name}`);
-    }
+    const message = operation === "entry"
+      ? `${rfidUid} entered and was assigned ${payload.slot_name}.`
+      : `${rfidUid} exited successfully. ${payload.slot_name} is now available.`;
+    renderOperationResult("success", message);
+    addActivity(
+      "success",
+      operation === "entry" ? "Vehicle entered" : "Vehicle exited",
+      message,
+    );
     await refreshDashboard();
+    elements.uid.focus();
+    elements.uid.select();
   } catch (error) {
+    renderOperationResult("error", error.message);
     addActivity("error", "Access request denied", error.message);
   } finally {
     setBusy(false);
