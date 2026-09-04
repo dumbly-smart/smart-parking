@@ -33,6 +33,8 @@ Milestone 3 remains complete and verified through implementation commit
   status, and vision operate on any non-empty configured slot set.
 - Added ADR-011 to supersede the fixed-cardinality portion of ADR-008 and
   updated the architecture summary accordingly.
+- Added the approved Milestone 4 test-driven implementation plan with five
+  independently verifiable delivery tasks.
 
 - Added production entry, exit, and parking-status contracts shared by hardware
   and simulated clients.
@@ -77,8 +79,8 @@ Milestone 3 remains complete and verified through implementation commit
 
 ## Next Task
 
-Review the Milestone 4 design, then create and execute its test-driven
-implementation plan.
+Execute the approved Milestone 4 implementation plan, beginning with dynamic
+slot contracts and their failing tests.
 
 ## Blockers
 
