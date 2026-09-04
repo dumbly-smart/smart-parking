@@ -22,6 +22,28 @@ EXPECTED_TABLES = {
     "vehicles",
 }
 
+LEGACY_SLOT_SCHEMA = """
+PRAGMA foreign_keys = ON;
+
+CREATE TABLE parking_slots (
+    id INTEGER PRIMARY KEY CHECK (id BETWEEN 1 AND 5),
+    name TEXT NOT NULL UNIQUE,
+    walking_distance REAL NOT NULL CHECK (walking_distance BETWEEN 0 AND 1),
+    zone TEXT NOT NULL,
+    occupied INTEGER NOT NULL DEFAULT 0 CHECK (occupied IN (0, 1)),
+    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+
+CREATE TABLE occupancy_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    slot_id INTEGER NOT NULL REFERENCES parking_slots(id),
+    occupied INTEGER NOT NULL CHECK (occupied IN (0, 1)),
+    confidence REAL CHECK (confidence BETWEEN 0 AND 1),
+    source TEXT NOT NULL,
+    observed_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+"""
+
 
 def write_config(
     path: Path, slot_ids: list[int] | None = None, distance_weight: float = 0.35
@@ -89,10 +111,10 @@ def test_settings_rejects_invalid_allocation_weights(tmp_path: Path) -> None:
         Settings(parking_config_path=config_path)
 
 
-def test_database_initialization_is_idempotent_and_creates_planned_tables(
+def test_database_dynamic_initialization_is_idempotent_and_creates_planned_tables(
     tmp_path: Path,
 ) -> None:
-    settings = make_settings(tmp_path)
+    settings = make_settings_for_ids(tmp_path, [8, 2, 21])
     database = Database(settings.database_path)
 
     database.initialize(settings.parking.slots)
@@ -111,7 +133,64 @@ def test_database_initialization_is_idempotent_and_creates_planned_tables(
         ).fetchall()
 
     assert tables == EXPECTED_TABLES
-    assert slots == [(1, "S1", 0), (2, "S2", 0), (3, "S3", 0), (4, "S4", 0), (5, "S5", 0)]
+    assert slots == [(2, "S2", 0), (8, "S8", 0), (21, "S21", 0)]
+
+
+def test_database_migrates_legacy_slot_constraint_without_losing_references(
+    tmp_path: Path,
+) -> None:
+    settings = make_settings_for_ids(tmp_path, [1, 2, 3, 4, 5, 8])
+    database = Database(settings.database_path)
+    with database.connect() as connection:
+        connection.executescript(LEGACY_SLOT_SCHEMA)
+        connection.executemany(
+            """
+            INSERT INTO parking_slots (id, name, walking_distance, zone)
+            VALUES (?, ?, ?, ?)
+            """,
+            [(slot_id, f"S{slot_id}", 0.5, f"zone-{slot_id}") for slot_id in range(1, 6)],
+        )
+        connection.execute(
+            """
+            INSERT INTO occupancy_events (slot_id, occupied, confidence, source)
+            VALUES (1, 1, 0.95, 'legacy-camera')
+            """
+        )
+
+    database.initialize(settings.parking.slots)
+
+    with sqlite3.connect(settings.database_path) as connection:
+        sql = connection.execute(
+            "SELECT sql FROM sqlite_master WHERE name = 'parking_slots'"
+        ).fetchone()[0]
+        event = connection.execute(
+            "SELECT slot_id, occupied FROM occupancy_events"
+        ).fetchone()
+        foreign_key_errors = connection.execute("PRAGMA foreign_key_check").fetchall()
+    assert "BETWEEN 1 AND 5" not in sql
+    assert event == (1, 1)
+    assert foreign_key_errors == []
+    assert database.slot_count() == 6
+
+
+def test_database_dynamic_reinitialization_rejects_unconfigured_persisted_slot(
+    tmp_path: Path,
+) -> None:
+    settings = make_settings_for_ids(tmp_path, [2, 8, 21])
+    database = Database(settings.database_path)
+    database.initialize(settings.parking.slots)
+
+    with pytest.raises(ValueError, match="persisted parking slot"):
+        database.initialize(settings.parking.slots[:2])
+
+
+def test_database_dynamic_initialization_rejects_empty_configuration(
+    tmp_path: Path,
+) -> None:
+    database = Database(tmp_path / "parking.db")
+
+    with pytest.raises(ValueError, match="at least one parking slot"):
+        database.initialize([])
 
 
 def test_health_reports_database_and_configured_slot_count(tmp_path: Path) -> None:

@@ -9,7 +9,7 @@ import pytest
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
-from backend.app.config import Settings
+from backend.app.config import Settings, SlotConfig
 from backend.app.db import Database
 from backend.app.main import create_app
 from backend.app.models.parking import (
@@ -379,6 +379,22 @@ def test_parking_status_response_accepts_non_contiguous_slot_ids_in_order() -> N
 
     assert isinstance(response.slots, tuple)
     assert [slot.id for slot in response.slots] == [2, 9, 21]
+
+
+def test_database_status_returns_non_contiguous_slots_in_configured_order(
+    tmp_path: Path,
+) -> None:
+    configured_slots = [
+        SlotConfig(id=8, name="S8", walking_distance=0.8, zone="south"),
+        SlotConfig(id=2, name="S2", walking_distance=0.2, zone="north"),
+        SlotConfig(id=21, name="S21", walking_distance=0.5, zone="central"),
+    ]
+    database = Database(tmp_path / "parking.db")
+    database.initialize(configured_slots)
+
+    response = database.parking_status()
+
+    assert [slot.id for slot in response.slots] == [8, 2, 21]
 
 
 @pytest.mark.parametrize("slot_ids", [[], [2, 2], [0]])

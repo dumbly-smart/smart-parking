@@ -18,18 +18,18 @@ from backend.app.models.parking import (
 )
 from optimization.models import AllocationResult, PersistedOptimizerRun
 
-SCHEMA = """
-PRAGMA foreign_keys = ON;
-
+PARKING_SLOTS_SCHEMA = """
 CREATE TABLE IF NOT EXISTS parking_slots (
-    id INTEGER PRIMARY KEY CHECK (id BETWEEN 1 AND 5),
+    id INTEGER PRIMARY KEY CHECK (id >= 1),
     name TEXT NOT NULL UNIQUE,
     walking_distance REAL NOT NULL CHECK (walking_distance BETWEEN 0 AND 1),
     zone TEXT NOT NULL,
     occupied INTEGER NOT NULL DEFAULT 0 CHECK (occupied IN (0, 1)),
     updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
+"""
 
+DEPENDENT_SCHEMA = """
 CREATE TABLE IF NOT EXISTS vehicles (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     rfid_uid TEXT NOT NULL UNIQUE,
@@ -110,6 +110,7 @@ CREATE TABLE IF NOT EXISTS prediction_runs (
 class Database:
     def __init__(self, path: Path) -> None:
         self.path = path
+        self._slot_order: tuple[int, ...] = ()
 
     @contextmanager
     def connect(self) -> Iterator[sqlite3.Connection]:
@@ -127,10 +128,13 @@ class Database:
             connection.close()
 
     def initialize(self, slots: Sequence[SlotConfig]) -> None:
-        if len(slots) != 5:
-            raise ValueError("database initialization requires exactly five slots")
+        if not slots:
+            raise ValueError("database initialization requires at least one parking slot")
+        slot_order = tuple(slot.id for slot in slots)
         with self.connect() as connection:
-            connection.executescript(SCHEMA)
+            self._migrate_legacy_parking_slots(connection)
+            connection.executescript(PARKING_SLOTS_SCHEMA)
+            connection.executescript(DEPENDENT_SCHEMA)
             session_columns = {
                 row["name"]
                 for row in connection.execute("PRAGMA table_info(parking_sessions)")
@@ -151,6 +155,16 @@ class Database:
                 WHERE exit_idempotency_key IS NOT NULL
                 """
             )
+            persisted_ids = {
+                int(row["id"])
+                for row in connection.execute("SELECT id FROM parking_slots")
+            }
+            unconfigured_ids = persisted_ids - set(slot_order)
+            if unconfigured_ids:
+                formatted_ids = ", ".join(str(slot_id) for slot_id in sorted(unconfigured_ids))
+                raise ValueError(
+                    f"persisted parking slot IDs are absent from configuration: {formatted_ids}"
+                )
             connection.executemany(
                 """
                 INSERT INTO parking_slots (id, name, walking_distance, zone)
@@ -162,6 +176,67 @@ class Database:
                 """,
                 [(slot.id, slot.name, slot.walking_distance, slot.zone) for slot in slots],
             )
+        self._slot_order = slot_order
+
+    @staticmethod
+    def _migrate_legacy_parking_slots(connection: sqlite3.Connection) -> None:
+        schema_row = connection.execute(
+            "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'parking_slots'"
+        ).fetchone()
+        if schema_row is None or "BETWEEN 1 AND 5" not in schema_row["sql"].upper():
+            return
+
+        index_statements = [
+            row["sql"]
+            for row in connection.execute(
+                """
+                SELECT sql FROM sqlite_master
+                WHERE type = 'index' AND tbl_name = 'parking_slots' AND sql IS NOT NULL
+                ORDER BY name
+                """
+            )
+        ]
+        connection.execute("PRAGMA foreign_keys = OFF")
+        try:
+            connection.execute("BEGIN")
+            connection.execute(
+                """
+                CREATE TABLE parking_slots_new (
+                    id INTEGER PRIMARY KEY CHECK (id >= 1),
+                    name TEXT NOT NULL UNIQUE,
+                    walking_distance REAL NOT NULL CHECK (walking_distance BETWEEN 0 AND 1),
+                    zone TEXT NOT NULL,
+                    occupied INTEGER NOT NULL DEFAULT 0 CHECK (occupied IN (0, 1)),
+                    updated_at TEXT NOT NULL DEFAULT (
+                        strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+                    )
+                )
+                """
+            )
+            connection.execute(
+                """
+                INSERT INTO parking_slots_new (
+                    id, name, walking_distance, zone, occupied, updated_at
+                )
+                SELECT id, name, walking_distance, zone, occupied, updated_at
+                FROM parking_slots
+                """
+            )
+            connection.execute("DROP TABLE parking_slots")
+            connection.execute("ALTER TABLE parking_slots_new RENAME TO parking_slots")
+            for statement in index_statements:
+                connection.execute(statement)
+            foreign_key_errors = connection.execute("PRAGMA foreign_key_check").fetchall()
+            if foreign_key_errors:
+                raise sqlite3.IntegrityError(
+                    "parking slot migration produced foreign key violations"
+                )
+            connection.commit()
+        except Exception:
+            connection.rollback()
+            raise
+        finally:
+            connection.execute("PRAGMA foreign_keys = ON")
 
     def slot_count(self) -> int:
         with self.connect() as connection:
@@ -388,17 +463,21 @@ class Database:
         return response
 
     def parking_status(self) -> ParkingStatusResponse:
+        order_expression = "CASE s.id " + " ".join(
+            f"WHEN ? THEN {position}" for position in range(len(self._slot_order))
+        ) + " ELSE ? END"
         with self.connect() as connection:
             rows = connection.execute(
-                """
+                f"""
                 SELECT s.id, s.name, s.walking_distance, s.zone, s.occupied,
                        s.updated_at, ps.id AS active_session_id, v.rfid_uid
                 FROM parking_slots AS s
                 LEFT JOIN parking_sessions AS ps
                     ON ps.slot_id = s.id AND ps.exited_at IS NULL
                 LEFT JOIN vehicles AS v ON v.id = ps.vehicle_id
-                ORDER BY s.id
-                """
+                ORDER BY {order_expression}
+                """,
+                (*self._slot_order, len(self._slot_order)),
             ).fetchall()
         return ParkingStatusResponse(
             slots=tuple(ParkingSlotStatus.model_validate(dict(row)) for row in rows)
