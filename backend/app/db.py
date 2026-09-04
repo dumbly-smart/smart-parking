@@ -18,6 +18,12 @@ from backend.app.models.parking import (
     ParkingStatusResponse,
 )
 from optimization.models import AllocationResult, PersistedOptimizerRun
+from prediction.models import (
+    AllocationFeatureRecord,
+    ContextSampleRecord,
+    PredictionSourceData,
+    SessionRecord,
+)
 
 PARKING_SLOTS_SCHEMA = """
 CREATE TABLE IF NOT EXISTS parking_slots (
@@ -312,6 +318,48 @@ class Database:
         with self.connect() as connection:
             row = connection.execute("SELECT COUNT(*) AS count FROM parking_slots").fetchone()
         return int(row["count"] if row else 0)
+
+    def load_prediction_source_data(self) -> PredictionSourceData:
+        with self.connect() as connection:
+            connection.execute("BEGIN")
+            slot_count = int(
+                connection.execute("SELECT COUNT(*) FROM parking_slots").fetchone()[0]
+            )
+            contexts = connection.execute(
+                """
+                SELECT id, occupancy_count, weather, holiday, event, sampled_at
+                FROM context_samples ORDER BY sampled_at, id
+                """
+            ).fetchall()
+            sessions = connection.execute(
+                """
+                SELECT id, vehicle_id, entered_at, exited_at
+                FROM parking_sessions ORDER BY entered_at, id
+                """
+            ).fetchall()
+            allocations = connection.execute(
+                """
+                SELECT a.id, ps.vehicle_id, a.created_at, r.objective_breakdown
+                FROM allocations AS a
+                JOIN parking_sessions AS ps ON ps.id = a.session_id
+                JOIN optimizer_runs AS r ON r.id = a.optimizer_run_id
+                ORDER BY a.created_at, a.id
+                """
+            ).fetchall()
+        return PredictionSourceData(
+            slot_count=slot_count,
+            context_samples=tuple(ContextSampleRecord(**dict(row)) for row in contexts),
+            sessions=tuple(SessionRecord(**dict(row)) for row in sessions),
+            allocations=tuple(
+                AllocationFeatureRecord(
+                    id=row["id"],
+                    vehicle_id=row["vehicle_id"],
+                    created_at=row["created_at"],
+                    objective_breakdown_json=row["objective_breakdown"],
+                )
+                for row in allocations
+            ),
+        )
 
     def apply_occupancy_transitions(
         self,
