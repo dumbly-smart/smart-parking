@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import shutil
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -92,8 +94,13 @@ def test_dashboard_places_operation_feedback_and_vehicles_by_controls(
     )
 
 
+@pytest.mark.skipif(shutil.which("node") is None, reason="Node.js is required for JS race test")
 def test_operation_refresh_waits_for_poll_then_fetches_fresh_state() -> None:
-    script = Path("backend/app/dashboard/dashboard.js").read_text(encoding="utf-8")
+    result = subprocess.run(
+        ["node", "tests/dashboard_refresh_race.test.js"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
 
-    assert "await refreshAfterOperation();" in script
-    assert "if (isRefreshing) return;" not in script
+    assert result.returncode == 0, result.stderr or result.stdout
