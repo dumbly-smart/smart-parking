@@ -7,7 +7,7 @@ import pytest
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
-from backend.app.config import Settings
+from backend.app.config import Settings, SlotConfig
 from backend.app.db import Database
 from backend.app.main import create_app
 
@@ -41,6 +41,17 @@ CREATE TABLE occupancy_events (
     confidence REAL CHECK (confidence BETWEEN 0 AND 1),
     source TEXT NOT NULL,
     observed_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+"""
+
+LEGACY_CONTEXT_SAMPLES_SCHEMA = """
+CREATE TABLE context_samples (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    occupancy_count INTEGER NOT NULL CHECK (occupancy_count BETWEEN 0 AND 5),
+    weather TEXT NOT NULL,
+    holiday INTEGER NOT NULL CHECK (holiday IN (0, 1)),
+    event INTEGER NOT NULL CHECK (event IN (0, 1)),
+    sampled_at TEXT NOT NULL
 );
 """
 
@@ -191,6 +202,112 @@ def test_database_dynamic_initialization_rejects_empty_configuration(
 
     with pytest.raises(ValueError, match="at least one parking slot"):
         database.initialize([])
+
+
+def test_fresh_database_persists_context_occupancy_above_five(tmp_path: Path) -> None:
+    settings = make_settings_for_ids(tmp_path, [1, 2, 3, 4, 5, 6, 7])
+    database = Database(settings.database_path)
+    database.initialize(settings.parking.slots)
+
+    with database.connect() as connection:
+        connection.execute(
+            """
+            INSERT INTO context_samples (
+                occupancy_count, weather, holiday, event, sampled_at
+            ) VALUES (7, 'clear', 0, 0, '2026-09-04T00:00:00Z')
+            """
+        )
+
+    with sqlite3.connect(settings.database_path) as connection:
+        count = connection.execute(
+            "SELECT occupancy_count FROM context_samples"
+        ).fetchone()[0]
+    assert count == 7
+
+
+def test_database_migrates_legacy_context_counts_without_losing_rows(
+    tmp_path: Path,
+) -> None:
+    settings = make_settings_for_ids(tmp_path, [1, 2, 3, 4, 5, 6])
+    database = Database(settings.database_path)
+    with database.connect() as connection:
+        connection.executescript(LEGACY_CONTEXT_SAMPLES_SCHEMA)
+        connection.execute(
+            """
+            INSERT INTO context_samples (
+                id, occupancy_count, weather, holiday, event, sampled_at
+            ) VALUES (42, 5, 'rain', 1, 0, '2026-09-03T00:00:00Z')
+            """
+        )
+
+    database.initialize(settings.parking.slots)
+    database.initialize(settings.parking.slots)
+    with database.connect() as connection:
+        connection.execute(
+            """
+            INSERT INTO context_samples (
+                occupancy_count, weather, holiday, event, sampled_at
+            ) VALUES (6, 'clear', 0, 1, '2026-09-04T00:00:00Z')
+            """
+        )
+
+    with sqlite3.connect(settings.database_path) as connection:
+        sql = connection.execute(
+            "SELECT sql FROM sqlite_master WHERE name = 'context_samples'"
+        ).fetchone()[0]
+        rows = connection.execute(
+            """
+            SELECT id, occupancy_count, weather, holiday, event, sampled_at
+            FROM context_samples ORDER BY id
+            """
+        ).fetchall()
+    assert "BETWEEN 0 AND 5" not in sql
+    assert rows == [
+        (42, 5, "rain", 1, 0, "2026-09-03T00:00:00Z"),
+        (43, 6, "clear", 0, 1, "2026-09-04T00:00:00Z"),
+    ]
+
+
+@pytest.mark.parametrize(
+    "updated_slots",
+    [
+        [
+            SlotConfig(id=1, name="B", walking_distance=0.4, zone="south"),
+            SlotConfig(id=2, name="A", walking_distance=0.3, zone="north"),
+        ],
+        [
+            SlotConfig(id=1, name="B", walking_distance=0.4, zone="south"),
+            SlotConfig(id=3, name="A", walking_distance=0.6, zone="central"),
+            SlotConfig(id=2, name="C", walking_distance=0.3, zone="north"),
+        ],
+    ],
+)
+def test_database_reseeding_converges_when_slot_names_move_between_ids(
+    tmp_path: Path, updated_slots: list[SlotConfig]
+) -> None:
+    database = Database(tmp_path / "parking.db")
+    database.initialize(
+        [
+            SlotConfig(id=1, name="A", walking_distance=0.2, zone="north"),
+            SlotConfig(id=2, name="B", walking_distance=0.8, zone="south"),
+        ]
+    )
+
+    database.initialize(updated_slots)
+
+    with sqlite3.connect(database.path) as connection:
+        rows = connection.execute(
+            """
+            SELECT id, name, walking_distance, zone
+            FROM parking_slots ORDER BY id
+            """
+        ).fetchall()
+    assert rows == sorted(
+        [
+            (slot.id, slot.name, slot.walking_distance, slot.zone)
+            for slot in updated_slots
+        ]
+    )
 
 
 def test_health_reports_database_and_configured_slot_count(tmp_path: Path) -> None:

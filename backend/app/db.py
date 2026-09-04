@@ -64,7 +64,7 @@ CREATE TABLE IF NOT EXISTS occupancy_events (
 
 CREATE TABLE IF NOT EXISTS context_samples (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    occupancy_count INTEGER NOT NULL CHECK (occupancy_count BETWEEN 0 AND 5),
+    occupancy_count INTEGER NOT NULL CHECK (occupancy_count >= 0),
     weather TEXT NOT NULL,
     holiday INTEGER NOT NULL CHECK (holiday IN (0, 1)),
     event INTEGER NOT NULL CHECK (event IN (0, 1)),
@@ -133,6 +133,7 @@ class Database:
         slot_order = tuple(slot.id for slot in slots)
         with self.connect() as connection:
             self._migrate_legacy_parking_slots(connection)
+            self._migrate_legacy_context_samples(connection)
             connection.executescript(PARKING_SLOTS_SCHEMA)
             connection.executescript(DEPENDENT_SCHEMA)
             session_columns = {
@@ -155,16 +156,34 @@ class Database:
                 WHERE exit_idempotency_key IS NOT NULL
                 """
             )
-            persisted_ids = {
-                int(row["id"])
-                for row in connection.execute("SELECT id FROM parking_slots")
-            }
+            connection.execute("BEGIN IMMEDIATE")
+            persisted_slots = connection.execute(
+                "SELECT id, name FROM parking_slots ORDER BY id"
+            ).fetchall()
+            persisted_ids = {int(row["id"]) for row in persisted_slots}
             unconfigured_ids = persisted_ids - set(slot_order)
             if unconfigured_ids:
                 formatted_ids = ", ".join(str(slot_id) for slot_id in sorted(unconfigured_ids))
                 raise ValueError(
                     f"persisted parking slot IDs are absent from configuration: {formatted_ids}"
                 )
+            used_names = {str(row["name"]) for row in persisted_slots} | {
+                slot.name for slot in slots
+            }
+            temporary_names: list[tuple[str, int]] = []
+            candidate_number = 1
+            for row in persisted_slots:
+                candidate = f"__smart_parking_seed_{candidate_number}__"
+                while candidate in used_names:
+                    candidate_number += 1
+                    candidate = f"__smart_parking_seed_{candidate_number}__"
+                used_names.add(candidate)
+                temporary_names.append((candidate, int(row["id"])))
+                candidate_number += 1
+            connection.executemany(
+                "UPDATE parking_slots SET name = ? WHERE id = ?",
+                temporary_names,
+            )
             connection.executemany(
                 """
                 INSERT INTO parking_slots (id, name, walking_distance, zone)
@@ -237,6 +256,56 @@ class Database:
             raise
         finally:
             connection.execute("PRAGMA foreign_keys = ON")
+
+    @staticmethod
+    def _migrate_legacy_context_samples(connection: sqlite3.Connection) -> None:
+        schema_row = connection.execute(
+            "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'context_samples'"
+        ).fetchone()
+        if schema_row is None or "BETWEEN 0 AND 5" not in schema_row["sql"].upper():
+            return
+
+        index_statements = [
+            row["sql"]
+            for row in connection.execute(
+                """
+                SELECT sql FROM sqlite_master
+                WHERE type = 'index' AND tbl_name = 'context_samples' AND sql IS NOT NULL
+                ORDER BY name
+                """
+            )
+        ]
+        try:
+            connection.execute("BEGIN")
+            connection.execute(
+                """
+                CREATE TABLE context_samples_new (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    occupancy_count INTEGER NOT NULL CHECK (occupancy_count >= 0),
+                    weather TEXT NOT NULL,
+                    holiday INTEGER NOT NULL CHECK (holiday IN (0, 1)),
+                    event INTEGER NOT NULL CHECK (event IN (0, 1)),
+                    sampled_at TEXT NOT NULL
+                )
+                """
+            )
+            connection.execute(
+                """
+                INSERT INTO context_samples_new (
+                    id, occupancy_count, weather, holiday, event, sampled_at
+                )
+                SELECT id, occupancy_count, weather, holiday, event, sampled_at
+                FROM context_samples
+                """
+            )
+            connection.execute("DROP TABLE context_samples")
+            connection.execute("ALTER TABLE context_samples_new RENAME TO context_samples")
+            for statement in index_statements:
+                connection.execute(statement)
+            connection.commit()
+        except Exception:
+            connection.rollback()
+            raise
 
     def slot_count(self) -> int:
         with self.connect() as connection:
