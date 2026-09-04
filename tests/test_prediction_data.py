@@ -1,6 +1,7 @@
 import json
 import sqlite3
-from datetime import UTC, datetime
+from dataclasses import replace
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import numpy as np
@@ -8,15 +9,105 @@ import pytest
 
 from backend.app.config import SlotConfig
 from backend.app.db import Database
+from prediction.data import build_feature_timeline, parse_utc_timestamp
 from prediction.models import (
     CONTINUOUS_FEATURE_NAMES,
     FEATURE_NAMES,
+    AllocationFeatureRecord,
+    ContextSampleRecord,
+    FeatureBucket,
     PredictionDataError,
+    PredictionSourceData,
     PreparedDataset,
     PreparedSplit,
     PreprocessingConfig,
     ScalerMetadata,
+    SessionRecord,
 )
+
+
+def session(
+    record_id: int,
+    *,
+    vehicle_id: int,
+    entered_at: str,
+    exited_at: str | None = None,
+) -> SessionRecord:
+    return SessionRecord(record_id, vehicle_id, entered_at, exited_at)
+
+
+def allocation(
+    record_id: int,
+    *,
+    vehicle_id: int,
+    created_at: str,
+    distance: float = 0.0,
+    congestion: float = 0.0,
+    fairness: float = 0.0,
+) -> AllocationFeatureRecord:
+    return AllocationFeatureRecord(
+        record_id,
+        vehicle_id,
+        created_at,
+        json.dumps(
+            {"distance": distance, "congestion": congestion, "fairness": fairness}
+        ),
+    )
+
+
+def prediction_source(
+    *,
+    slot_count: int = 5,
+    context_counts: list[int] | tuple[int, ...] = (0,) * 13,
+    weather: str = "clear",
+    holiday: int = 0,
+    event: int = 0,
+    sessions: tuple[SessionRecord, ...] = (),
+    allocations: tuple[AllocationFeatureRecord, ...] = (),
+) -> PredictionSourceData:
+    return PredictionSourceData(
+        slot_count=slot_count,
+        context_samples=tuple(
+            ContextSampleRecord(
+                id=index + 1,
+                occupancy_count=count,
+                weather=weather,
+                holiday=holiday,
+                event=event,
+                sampled_at=(
+                    datetime(2026, 9, 4, 10, tzinfo=UTC) + timedelta(minutes=index * 5)
+                ).isoformat(),
+            )
+            for index, count in enumerate(context_counts)
+        ),
+        sessions=sessions,
+        allocations=allocations,
+    )
+
+
+def source_with_context_minutes(
+    minutes: tuple[int, ...], *, slot_count: int
+) -> PredictionSourceData:
+    return PredictionSourceData(
+        slot_count=slot_count,
+        context_samples=tuple(
+            ContextSampleRecord(
+                id=index + 1,
+                occupancy_count=index,
+                weather="clear",
+                holiday=0,
+                event=0,
+                sampled_at=f"2026-09-04T10:{minute:02d}:00Z",
+            )
+            for index, minute in enumerate(minutes)
+        ),
+        sessions=(),
+        allocations=(),
+    )
+
+
+def feature(bucket: FeatureBucket, name: str) -> float:
+    return bucket.values[FEATURE_NAMES.index(name)]
 
 
 def initialized_prediction_database(tmp_path: Path, slot_ids: tuple[int, ...]) -> Database:
@@ -123,6 +214,230 @@ def test_database_loads_ordered_prediction_sources_without_rfid(tmp_path: Path) 
     ]
     assert source.sessions[0].vehicle_id == source.allocations[0].vehicle_id
     assert "private-tag" not in repr(source)
+
+
+def test_feature_timeline_aggregates_context_sessions_and_allocations() -> None:
+    source = prediction_source(
+        slot_count=4,
+        context_counts=[0, 1, 2, 2, 3, 3, 2, 2, 1, 1, 2, 3, 4],
+        weather="rain",
+        holiday=1,
+        event=1,
+        sessions=(
+            session(1, vehicle_id=7, entered_at="2026-09-04T10:01:00Z"),
+            session(2, vehicle_id=7, entered_at="2026-09-04T10:06:00Z"),
+        ),
+        allocations=(
+            allocation(
+                1,
+                vehicle_id=7,
+                created_at="2026-09-04T10:02:00Z",
+                distance=0.25,
+                congestion=0.5,
+                fairness=0.75,
+            ),
+        ),
+    )
+
+    timeline = build_feature_timeline(source, PreprocessingConfig())
+    first = timeline[0]
+
+    assert len(timeline) == 13
+    assert first is not None
+    assert feature(first, "occupancy_ratio") == 0
+    assert feature(first, "entry_count") == 1
+    assert feature(first, "active_session_count") == 1
+    assert feature(first, "unique_vehicle_count") == 1
+    assert feature(first, "allocation_count") == 1
+    assert feature(first, "mean_walking_distance") == 0.25
+    assert feature(first, "mean_congestion") == 0.5
+    assert feature(first, "mean_fairness") == 0.75
+    assert feature(first, "allocation_present") == 1
+    assert feature(first, "weather_rain") == 1
+    assert feature(first, "holiday") == 1
+    assert feature(first, "event") == 1
+    assert all(np.isfinite(first.values))
+
+    second = timeline[1]
+    assert second is not None
+    assert feature(second, "occupancy_change") == 0.25
+    assert feature(second, "occupancy_mean_15m") == 0.125
+    assert feature(second, "entry_count") == 1
+    assert feature(second, "returning_vehicle_rate") == 1
+    assert feature(second, "allocation_present") == 0
+
+
+def test_feature_timeline_carries_short_gaps_and_preserves_long_gaps() -> None:
+    source = source_with_context_minutes((0, 20, 25, 30), slot_count=5)
+
+    timeline = build_feature_timeline(source, PreprocessingConfig())
+
+    assert [bucket is None for bucket in timeline[:7]] == [
+        False,
+        False,
+        False,
+        False,
+        False,
+        False,
+        False,
+    ]
+    source = source_with_context_minutes((0, 25, 30), slot_count=5)
+    timeline = build_feature_timeline(source, PreprocessingConfig())
+    assert timeline[4] is None
+
+    following = timeline[5]
+    assert following is not None
+    assert feature(following, "occupancy_change") == 0
+    assert feature(following, "occupancy_mean_60m") == 0.2
+
+
+def test_feature_timeline_sorts_and_selects_latest_context_in_bucket() -> None:
+    source = PredictionSourceData(
+        slot_count=5,
+        context_samples=(
+            ContextSampleRecord(8, 4, "hail", 1, 0, "2026-09-04T10:01:00Z"),
+            ContextSampleRecord(3, 1, "rain", 0, 1, "2026-09-04T10:04:00Z"),
+            ContextSampleRecord(9, 2, " Cloudy ", 1, 1, "2026-09-04T10:04:00Z"),
+        ),
+        sessions=(),
+        allocations=(),
+    )
+
+    timeline = build_feature_timeline(source, PreprocessingConfig())
+
+    assert len(timeline) == 1
+    bucket = timeline[0]
+    assert bucket is not None
+    assert feature(bucket, "occupancy_ratio") == 0.4
+    assert feature(bucket, "weather_cloudy") == 1
+    assert feature(bucket, "holiday") == 1
+    assert feature(bucket, "event") == 1
+
+
+def test_feature_timeline_uses_half_open_session_boundaries() -> None:
+    source = prediction_source(
+        sessions=(
+            session(
+                2,
+                vehicle_id=7,
+                entered_at="2026-09-04T10:06:00Z",
+                exited_at="2026-09-04T10:10:00Z",
+            ),
+            session(
+                1,
+                vehicle_id=7,
+                entered_at="2026-09-04T10:01:00Z",
+                exited_at="2026-09-04T10:05:00Z",
+            ),
+        )
+    )
+
+    timeline = build_feature_timeline(source, PreprocessingConfig())
+    first, second, third = timeline[:3]
+
+    assert first is not None and second is not None and third is not None
+    assert feature(first, "active_session_count") == 1
+    assert feature(second, "entry_count") == 1
+    assert feature(second, "exit_count") == 1
+    assert feature(second, "unique_vehicle_count") == 1
+    assert feature(second, "returning_vehicle_rate") == 1
+    assert feature(second, "active_session_count") == 1
+    assert feature(third, "exit_count") == 1
+    assert feature(third, "active_session_count") == 0
+
+
+@pytest.mark.parametrize("value", ["2026-09-04T10:00:00", "not-a-timestamp"])
+def test_parse_utc_timestamp_rejects_invalid_timestamps(value: str) -> None:
+    with pytest.raises(PredictionDataError) as raised:
+        parse_utc_timestamp(value, "sampled_at")
+
+    assert raised.value.code == "invalid_timestamp"
+
+
+@pytest.mark.parametrize(
+    ("source", "code"),
+    [
+        (replace(prediction_source(), slot_count=0), "invalid_slot_count"),
+        (
+            replace(
+                prediction_source(),
+                context_samples=(
+                    ContextSampleRecord(1, 6, "clear", 0, 0, "2026-09-04T10:00:00Z"),
+                ),
+            ),
+            "invalid_occupancy",
+        ),
+        (
+            replace(
+                prediction_source(),
+                context_samples=(
+                    ContextSampleRecord(1, 0, "clear", 2, 0, "2026-09-04T10:00:00Z"),
+                ),
+            ),
+            "invalid_flag",
+        ),
+        (
+            replace(
+                prediction_source(),
+                allocations=(
+                    AllocationFeatureRecord(1, 7, "2026-09-04T10:00:00Z", "not-json"),
+                ),
+            ),
+            "invalid_objective",
+        ),
+        (
+            replace(
+                prediction_source(),
+                allocations=(
+                    allocation(
+                        1,
+                        vehicle_id=7,
+                        created_at="2026-09-04T10:00:00Z",
+                        distance=float("nan"),
+                    ),
+                ),
+            ),
+            "invalid_objective",
+        ),
+        (
+            replace(
+                prediction_source(),
+                sessions=(
+                    session(
+                        1,
+                        vehicle_id=7,
+                        entered_at="2026-09-04T10:05:00Z",
+                        exited_at="2026-09-04T10:04:59Z",
+                    ),
+                ),
+            ),
+            "invalid_session",
+        ),
+    ],
+)
+def test_feature_timeline_rejects_invalid_source_data(
+    source: PredictionSourceData, code: str
+) -> None:
+    with pytest.raises(PredictionDataError) as raised:
+        build_feature_timeline(source, PreprocessingConfig())
+
+    assert raised.value.code == code
+
+
+def test_feature_timeline_rejects_duplicate_record_ids() -> None:
+    duplicate = ContextSampleRecord(1, 0, "clear", 0, 0, "2026-09-04T10:05:00Z")
+    source = replace(
+        prediction_source(context_counts=(0,)),
+        context_samples=(
+            ContextSampleRecord(1, 0, "clear", 0, 0, "2026-09-04T10:00:00Z"),
+            duplicate,
+        ),
+    )
+
+    with pytest.raises(PredictionDataError) as raised:
+        build_feature_timeline(source, PreprocessingConfig())
+
+    assert raised.value.code == "duplicate_id"
 
 
 def test_preprocessing_config_has_approved_defaults() -> None:
