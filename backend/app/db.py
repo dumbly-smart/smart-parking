@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from backend.app.config import SlotConfig
+from backend.app.models.occupancy import OccupancyTransition
 from backend.app.models.parking import (
     EntryResponse,
     ExitResponse,
@@ -311,6 +312,67 @@ class Database:
         with self.connect() as connection:
             row = connection.execute("SELECT COUNT(*) AS count FROM parking_slots").fetchone()
         return int(row["count"] if row else 0)
+
+    def apply_occupancy_transitions(
+        self,
+        transitions: Sequence[OccupancyTransition],
+        observed_at: str,
+    ) -> frozenset[int]:
+        blocked: set[int] = set()
+        with self.connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            for transition in transitions:
+                slot = connection.execute(
+                    """
+                    SELECT s.occupied,
+                           EXISTS (
+                               SELECT 1 FROM parking_sessions AS ps
+                               WHERE ps.slot_id = s.id AND ps.exited_at IS NULL
+                           ) AS has_active_session
+                    FROM parking_slots AS s
+                    WHERE s.id = ?
+                    """,
+                    (transition.slot_id,),
+                ).fetchone()
+                if slot is None:
+                    raise LookupError(f"unknown parking slot ID {transition.slot_id}")
+                if not transition.occupied and bool(slot["has_active_session"]):
+                    blocked.add(transition.slot_id)
+                    continue
+                current_occupied = bool(slot["occupied"])
+                if transition.occupied == current_occupied:
+                    continue
+                updated = connection.execute(
+                    """
+                    UPDATE parking_slots
+                    SET occupied = ?, updated_at = ?
+                    WHERE id = ? AND occupied = ?
+                    """,
+                    (
+                        transition.occupied,
+                        observed_at,
+                        transition.slot_id,
+                        current_occupied,
+                    ),
+                )
+                if updated.rowcount != 1:
+                    raise RuntimeError(
+                        f"parking slot {transition.slot_id} changed concurrently"
+                    )
+                connection.execute(
+                    """
+                    INSERT INTO occupancy_events
+                        (slot_id, occupied, confidence, source, observed_at)
+                    VALUES (?, ?, ?, 'camera_heuristic', ?)
+                    """,
+                    (
+                        transition.slot_id,
+                        transition.occupied,
+                        transition.confidence,
+                        observed_at,
+                    ),
+                )
+        return frozenset(blocked)
 
     def enter_vehicle(
         self,
