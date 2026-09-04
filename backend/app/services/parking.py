@@ -4,7 +4,12 @@ from collections import Counter
 
 from backend.app.config import ObjectiveWeights
 from backend.app.db import Database
-from backend.app.models.parking import EntryResponse, ParkingSlotRecord, VehicleOperationRequest
+from backend.app.models.parking import (
+    EntryResponse,
+    ExitResponse,
+    ParkingSlotRecord,
+    VehicleOperationRequest,
+)
 from optimization.benchmark import OPTIMIZERS
 from optimization.models import AllocationRequest, AllocationResult, SlotCandidate
 
@@ -45,3 +50,6 @@ class ParkingService:
         return self.database.enter_vehicle(
             request.rfid_uid, request.idempotency_key, allocate
         )
+
+    def exit(self, request: VehicleOperationRequest) -> ExitResponse:
+        return self.database.exit_vehicle(request.rfid_uid, request.idempotency_key)

@@ -1,6 +1,11 @@
 from fastapi import APIRouter, HTTPException, Request
 
-from backend.app.models.parking import EntryResponse, ParkingConflict, VehicleOperationRequest
+from backend.app.models.parking import (
+    EntryResponse,
+    ExitResponse,
+    ParkingConflict,
+    VehicleOperationRequest,
+)
 from optimization.models import NoAvailableSlotError
 
 router = APIRouter()
@@ -14,4 +19,14 @@ def enter_vehicle(payload: VehicleOperationRequest, request: Request) -> EntryRe
         code = exc.code if isinstance(exc, ParkingConflict) else "no_available_slot"
         raise HTTPException(
             status_code=409, detail={"code": code, "message": str(exc)}
+        ) from exc
+
+
+@router.post("/api/vehicle/exit", response_model=ExitResponse)
+def exit_vehicle(payload: VehicleOperationRequest, request: Request) -> ExitResponse:
+    try:
+        return request.app.state.parking_service.exit(payload)
+    except ParkingConflict as exc:
+        raise HTTPException(
+            status_code=409, detail={"code": exc.code, "message": exc.message}
         ) from exc

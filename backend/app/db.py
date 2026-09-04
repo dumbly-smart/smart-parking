@@ -7,7 +7,12 @@ from contextlib import contextmanager
 from pathlib import Path
 
 from backend.app.config import SlotConfig
-from backend.app.models.parking import EntryResponse, ParkingConflict, ParkingSlotRecord
+from backend.app.models.parking import (
+    EntryResponse,
+    ExitResponse,
+    ParkingConflict,
+    ParkingSlotRecord,
+)
 from optimization.models import AllocationResult, PersistedOptimizerRun
 
 SCHEMA = """
@@ -318,4 +323,77 @@ class Database:
             ).fetchone()
         return EntryResponse(
             **dict(saved), optimizer=result.algorithm, allocation_cost=result.best_cost
+        )
+
+    def exit_vehicle(self, rfid_uid: str, idempotency_key: str) -> ExitResponse:
+        with self.connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            entry_key = connection.execute(
+                "SELECT 1 FROM parking_sessions WHERE entry_idempotency_key = ?",
+                (idempotency_key,),
+            ).fetchone()
+            if entry_key is not None:
+                raise ParkingConflict(
+                    "idempotency_conflict",
+                    "idempotency key is already used by another operation",
+                )
+            existing = connection.execute(
+                """
+                SELECT ps.id AS session_id, v.rfid_uid, s.id AS slot_id,
+                       s.name AS slot_name, ps.exited_at
+                FROM parking_sessions ps
+                JOIN vehicles v ON v.id = ps.vehicle_id
+                JOIN parking_slots s ON s.id = ps.slot_id
+                WHERE ps.exit_idempotency_key = ?
+                """,
+                (idempotency_key,),
+            ).fetchone()
+            if existing is not None:
+                if existing["rfid_uid"] != rfid_uid:
+                    raise ParkingConflict(
+                        "idempotency_conflict",
+                        "idempotency key is already used by another operation",
+                    )
+                return ExitResponse.model_validate(dict(existing))
+            active = connection.execute(
+                """
+                SELECT ps.id AS session_id, ps.slot_id, v.rfid_uid, s.name AS slot_name
+                FROM parking_sessions ps
+                JOIN vehicles v ON v.id = ps.vehicle_id
+                JOIN parking_slots s ON s.id = ps.slot_id
+                WHERE v.rfid_uid = ? AND ps.exited_at IS NULL
+                """,
+                (rfid_uid,),
+            ).fetchone()
+            if active is None:
+                raise ParkingConflict(
+                    "vehicle_not_parked", "vehicle does not have an active parking session"
+                )
+            connection.execute(
+                """
+                UPDATE parking_sessions
+                SET exited_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
+                    exit_idempotency_key = ?
+                WHERE id = ?
+                """,
+                (idempotency_key, active["session_id"]),
+            )
+            connection.execute(
+                """
+                UPDATE parking_slots
+                SET occupied = 0, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+                WHERE id = ?
+                """,
+                (active["slot_id"],),
+            )
+            exited_at = connection.execute(
+                "SELECT exited_at FROM parking_sessions WHERE id = ?",
+                (active["session_id"],),
+            ).fetchone()["exited_at"]
+        return ExitResponse(
+            session_id=active["session_id"],
+            rfid_uid=active["rfid_uid"],
+            slot_id=active["slot_id"],
+            slot_name=active["slot_name"],
+            exited_at=exited_at,
         )

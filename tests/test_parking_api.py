@@ -116,6 +116,12 @@ def post_entry(client: TestClient, uid: str = "card-1", key: str = "entry-1"):
     )
 
 
+def post_exit(client: TestClient, uid: str = "card-1", key: str = "exit-1"):
+    return client.post(
+        "/api/vehicle/exit", json={"rfid_uid": uid, "idempotency_key": key}
+    )
+
+
 def test_entry_allocates_free_slot_and_persists_atomically(tmp_path: Path) -> None:
     settings = make_settings(tmp_path, selected_optimizer="ga")
     with TestClient(create_app(settings)) as client:
@@ -229,3 +235,79 @@ def test_entry_transaction_rolls_back_when_allocation_insert_fails(tmp_path: Pat
         "allocations": 0,
         "optimizer_runs": 0,
     }
+
+
+def test_exit_closes_session_and_frees_slot(tmp_path: Path) -> None:
+    settings = make_settings(tmp_path)
+    with TestClient(create_app(settings)) as client:
+        entry = post_entry(client).json()
+        response = post_exit(client)
+
+    assert response.status_code == 200
+    assert response.json()["gate_action"] == "open"
+    assert response.json()["slot_id"] == entry["slot_id"]
+    with sqlite3.connect(settings.database_path) as connection:
+        session = connection.execute(
+            "SELECT exited_at, exit_idempotency_key FROM parking_sessions"
+        ).fetchone()
+        occupied = connection.execute(
+            "SELECT occupied FROM parking_slots WHERE id = ?", (entry["slot_id"],)
+        ).fetchone()[0]
+    assert session[0] is not None
+    assert session[1] == "exit-1"
+    assert occupied == 0
+
+
+def test_exit_retry_replays_original_result(tmp_path: Path) -> None:
+    settings = make_settings(tmp_path)
+    with TestClient(create_app(settings)) as client:
+        post_entry(client)
+        first = post_exit(client)
+        retry = post_exit(client)
+
+    assert retry.status_code == 200
+    assert retry.json() == first.json()
+    assert table_counts(settings.database_path)["parking_sessions"] == 1
+
+
+@pytest.mark.parametrize("uid", ["unknown-card", "card-1"])
+def test_exit_without_active_session_is_rejected(tmp_path: Path, uid: str) -> None:
+    settings = make_settings(tmp_path)
+    with TestClient(create_app(settings)) as client:
+        if uid == "card-1":
+            post_entry(client)
+            post_exit(client)
+        response = post_exit(client, uid=uid, key="another-exit")
+
+    assert response.status_code == 409
+    assert response.json()["detail"]["code"] == "vehicle_not_parked"
+
+
+@pytest.mark.parametrize("first_operation", ["entry", "exit"])
+def test_idempotency_key_cannot_cross_operation_namespaces(
+    tmp_path: Path, first_operation: str
+) -> None:
+    settings = make_settings(tmp_path)
+    shared_key = "shared-operation-key"
+    with TestClient(create_app(settings)) as client:
+        if first_operation == "entry":
+            assert post_entry(client, key=shared_key).status_code == 200
+            response = post_exit(client, key=shared_key)
+        else:
+            assert post_entry(client).status_code == 200
+            assert post_exit(client, key=shared_key).status_code == 200
+            response = post_entry(client, key=shared_key)
+
+    assert response.status_code == 409
+    assert response.json()["detail"]["code"] == "idempotency_conflict"
+
+
+def test_entry_key_cannot_be_reused_for_another_vehicle(tmp_path: Path) -> None:
+    settings = make_settings(tmp_path)
+    with TestClient(create_app(settings)) as client:
+        assert post_entry(client, uid="card-1", key="shared-key").status_code == 200
+        response = post_entry(client, uid="card-2", key="shared-key")
+
+    assert response.status_code == 409
+    assert response.json()["detail"]["code"] == "idempotency_conflict"
+    assert table_counts(settings.database_path)["vehicles"] == 1
