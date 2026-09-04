@@ -9,8 +9,11 @@ from pydantic import BaseModel
 from backend.app.config import Settings
 from backend.app.db import Database
 from backend.app.routes.allocation import router as allocation_router
+from backend.app.routes.occupancy import router as occupancy_router
 from backend.app.routes.parking import router as parking_router
+from backend.app.services.occupancy import OccupancyService
 from backend.app.services.parking import ParkingService
+from vision.detector import HeuristicDetector
 
 
 class HealthResponse(BaseModel):
@@ -34,10 +37,23 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             application_settings.selected_optimizer,
             application_settings.parking.allocation.weights,
         )
+        detector = HeuristicDetector(
+            application_settings.roi,
+            max_image_bytes=application_settings.camera_max_image_bytes,
+        )
+        application.state.occupancy_service = OccupancyService(
+            database,
+            detector,
+            minimum_confidence=application_settings.roi.heuristic.minimum_confidence,
+            required_consecutive_frames=(
+                application_settings.roi.heuristic.required_consecutive_frames
+            ),
+        )
         yield
 
     application = FastAPI(title="Smart Parking API", version="0.1.0", lifespan=lifespan)
     application.include_router(allocation_router)
+    application.include_router(occupancy_router)
     application.include_router(parking_router)
 
     @application.get("/health", response_model=HealthResponse)

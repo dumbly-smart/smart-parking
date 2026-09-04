@@ -1,8 +1,10 @@
 # Smart Parking
 
-Five-slot smart parking prototype with a FastAPI/SQLite server and a fully
-hardware-independent demo path. The remaining optimizer, vision, prediction,
-dashboard, and firmware milestones are tracked in `progress.md`.
+Smart parking prototype with a FastAPI/SQLite server and a fully
+hardware-independent demo path. The committed configuration models the current
+five-slot rig, while the backend supports any non-empty configured slot set.
+The remaining prediction, dashboard, and firmware milestones are tracked in
+`progress.md`.
 
 ## Backend foundation
 
@@ -23,7 +25,7 @@ make run
 ```
 
 Open `http://127.0.0.1:8000/health`. The first startup creates the local SQLite
-database and idempotently seeds the five slots from `config/parking.yaml`.
+database and idempotently seeds every slot from `config/parking.yaml`.
 
 Copy `.env.example` to `.env` to override local configuration. Hardware mode
 requires both `SMART_PARKING_MODE=hardware` and
@@ -33,7 +35,7 @@ model artifacts are ignored by Git.
 
 ## Allocation comparison
 
-`POST /api/allocation/run` accepts five normalized slot candidates and an
+`POST /api/allocation/run` accepts one or more normalized slot candidates and an
 `algorithm` value of `ga`, `pso`, `aco`, or `all`. Every algorithm excludes
 occupied candidates and uses the same configurable weighted objective. Runs
 are persisted and available from `GET /api/benchmarks/optimizers`; supply a
@@ -72,8 +74,8 @@ Representative entry response:
 }
 ```
 
-Representative status response (the real response always contains slots 1
-through 5):
+Representative status response (the real response contains every configured
+slot in configuration order):
 
 ```json
 {
@@ -111,3 +113,27 @@ state commit atomically. Exit closes that session and releases the same slot.
 Expected lifecycle conflicts return HTTP 409 with a stable `detail.code`,
 including `no_available_slot`, `vehicle_already_parked`,
 `vehicle_not_parked`, and `idempotency_conflict`.
+
+## Camera occupancy API
+
+`POST /api/camera/occupancy` accepts a JPEG frame, crops one configured ROI per
+parking slot, and runs a deterministic edge-density heuristic. The committed
+`config/rois.example.json` matches the five demo slots. For a fixed physical
+camera, copy it to the ignored `config/rois.json`, calibrate each pixel
+rectangle, and set `SMART_PARKING_ROI_CONFIG_PATH=config/rois.json`.
+
+```bash
+curl -X POST http://127.0.0.1:8000/api/camera/occupancy \
+  -F 'image=@frame.jpg;type=image/jpeg'
+```
+
+The response contains one result per configured slot in parking-configuration
+order. A confident state change must appear for three consecutive demo frames
+before it is persisted; pending, uncertain, unchanged, and lifecycle-blocked
+observations create no occupancy event. The upload limit defaults to 5 MiB and
+can be changed with `SMART_PARKING_CAMERA_MAX_IMAGE_BYTES`.
+
+The heuristic is a deterministic baseline for demos and calibration, not a
+production-grade classifier. Its edge threshold, confidence threshold, and
+smoothing count are configured in the ROI JSON. A later CNN detector can use
+the same service contract without changing the camera API.
