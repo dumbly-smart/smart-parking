@@ -4,8 +4,8 @@ Last updated: 2026-09-04
 
 ## Current Status
 
-Milestone 3 (parking lifecycle API) is complete and verified on branch
-`parking-lifecycle-api` through implementation commit `36f142a`.
+Milestone 3 (parking lifecycle API) is complete, merged, and verified on
+`main`; implementation changes run through commit `36f142a`.
 
 ## Milestones
 
