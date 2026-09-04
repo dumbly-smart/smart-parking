@@ -173,3 +173,27 @@ Semantic results are reproducible while runtime remains a measured value.
 Malformed scenarios fail validation and full capacity produces a structured
 409 response. Algorithm implementations may evolve independently only behind
 this contract.
+
+## ADR-009: Atomic persisted RFID lifecycle idempotency
+
+- Date: 2026-09-04
+- Status: Accepted
+
+### Context
+
+RFID controllers can retry requests after a timeout, while simultaneous entry
+requests must never receive the same slot or open the gate after a partial
+write.
+
+### Decision
+
+Run entry and exit operations inside SQLite `BEGIN IMMEDIATE` transactions.
+Persist entry and exit idempotency keys in one logical namespace and replay
+matching requests from stored state. Return structured HTTP 409 conflicts for
+key misuse, invalid lifecycle transitions, and full capacity.
+
+### Consequences
+
+Retries remain safe across process restarts, and slot selection plus lifecycle
+persistence commit as one unit. Demo clients must generate a distinct key for
+each entry and exit operation, while SQLite serializes lifecycle writers.

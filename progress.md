@@ -1,11 +1,11 @@
 # Smart Parking Project Progress
 
-Last updated: 2026-09-03
+Last updated: 2026-09-04
 
 ## Current Status
 
-Milestone 2 (allocation domain and optimizer comparison) is complete and
-verified on `main`, starting from commit `dd943a4`.
+Milestone 3 (demo entry/exit API) is complete and verified on
+`feat/demo-parking-lifecycle`.
 
 ## Milestones
 
@@ -18,7 +18,7 @@ verified on `main`, starting from commit `dd943a4`.
 | Local Git repository initialized | Complete | Repository on `main` with an initial documentation commit |
 | Python/backend foundation | Complete | 6 tests pass; lint passes; health smoke reports five slots |
 | Optimizer comparison | Complete | 20 focused tests; shared scenario API atomically persists GA/PSO/ACO metrics |
-| Demo entry/exit API | Not started | Simulated RFID flow allocates only free slots and persists sessions |
+| Demo entry/exit API | Complete | 44 tests pass; entry, retry, exit, conflicts, rollback, and status are covered |
 | Vision occupancy pipeline | Not started | Five configurable ROIs, heuristic mode, smoothing, and tests work |
 | Prediction comparison | Not started | Shared split evaluates LSTM, GRU, and Transformer with required metrics |
 | Dashboard | Not started | Live five-slot state and both comparison tables are visible |
@@ -26,6 +26,15 @@ verified on `main`, starting from commit `dd943a4`.
 | End-to-end demo | Not started | Seed, simulated camera, RFID entry, allocation, prediction, and UI run without hardware |
 
 ## Completed This Session
+
+- Added atomic simulated RFID entry and exit APIs with database-backed retry
+  replay and a shared idempotency-key namespace.
+- Added a five-slot parking-status API with active session and RFID details.
+- Enforced occupied-slot exclusion, full-capacity safety, active-vehicle
+  conflicts, and transaction rollback without issuing successful gate actions.
+- Added fresh/legacy schema support for exit idempotency and runnable demo API
+  examples.
+- Verified 44 tests and Ruff; whitespace checks pass.
 
 - Added a normalized allocation request/result model and weighted objective
   shared by deterministic seeded GA, PSO, and ACO implementations.
@@ -58,8 +67,8 @@ verified on `main`, starting from commit `dd943a4`.
 
 ## Next Task
 
-Begin Milestone 3 with API/session/idempotency contracts and failing integration
-tests for entry, retry, exit, full capacity, and occupied-slot safety.
+Begin the vision occupancy pipeline with ROI/occupancy contracts and failing
+tests for five-slot heuristic updates and smoothing.
 
 ## Blockers
 

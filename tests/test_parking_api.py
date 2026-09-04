@@ -12,7 +12,6 @@ from backend.app.db import Database
 from backend.app.main import create_app
 from backend.app.models.parking import VehicleOperationRequest
 
-
 LEGACY_PARKING_SESSIONS_SCHEMA = """
 PRAGMA foreign_keys = ON;
 CREATE TABLE vehicles (
@@ -225,9 +224,11 @@ def test_entry_transaction_rolls_back_when_allocation_insert_fails(tmp_path: Pat
             """
         )
 
-    with pytest.raises(sqlite3.IntegrityError, match="test allocation failure"):
-        with TestClient(create_app(settings), raise_server_exceptions=True) as client:
-            post_entry(client)
+    with (
+        pytest.raises(sqlite3.IntegrityError, match="test allocation failure"),
+        TestClient(create_app(settings), raise_server_exceptions=True) as client,
+    ):
+        post_entry(client)
 
     assert table_counts(settings.database_path) == {
         "vehicles": 0,
