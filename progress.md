@@ -1,6 +1,6 @@
 # Smart Parking Project Progress
 
-Last updated: 2026-09-04
+Last updated: 2026-09-05
 
 ## Current Status
 
@@ -20,12 +20,21 @@ Milestone 4 (scalable vision occupancy pipeline) is complete and verified on
 | Optimizer comparison | Complete | 20 focused tests; shared scenario API atomically persists GA/PSO/ACO metrics |
 | Parking lifecycle API | Complete | 23 focused and 49 full tests pass; RFID lifecycle is atomic and retry-safe |
 | Vision occupancy pipeline | Complete | 22 focused and 90 full tests pass; dynamic slots, ROI heuristic, smoothing, persistence, and JPEG API work |
-| Prediction comparison | Not started | Shared split evaluates LSTM, GRU, and Transformer with required metrics |
+| Prediction comparison | In progress | Shared preprocessing slice defines one chronological split, feature contract, and leakage-safe scaling for all predictors |
 | Dashboard | Not started | Live five-slot state and both comparison tables are visible |
 | Firmware integration | Not started | Both sketches build and complete the documented hardware flow |
 | End-to-end demo | Not started | Seed, simulated camera, RFID entry, allocation, prediction, and UI run without hardware |
 
 ## Completed This Session
+
+- Documented the shared prediction preprocessing contracts: persisted context,
+  lifecycle, allocation, and optimizer records are aggregated into regular
+  five-minute buckets with a twelve-bucket history and next-bucket target.
+- Recorded privacy-preserving RFID aggregates, the chronological 70/15/15
+  split, and training-only continuous-feature scaling to prevent leakage.
+- Verified 35 focused prediction tests and 125 full tests; Ruff and
+  `git diff --check` pass. The two warnings remain pre-existing dependency
+  deprecations from the FastAPI/Starlette test-client integration.
 
 - Removed fixed-five constraints from configuration, schemas, allocation,
   lifecycle, status, health, and SQLite persistence while keeping the committed
@@ -95,8 +104,8 @@ Milestone 4 (scalable vision occupancy pipeline) is complete and verified on
 
 ## Next Task
 
-Begin the prediction comparison milestone with shared preprocessing and one
-deterministic train/validation/test split for every predictor.
+Build the deterministic demo-data generator and the shared model-training and
+evaluation boundary for every predictor.
 
 ## Blockers
 

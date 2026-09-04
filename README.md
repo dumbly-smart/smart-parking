@@ -137,3 +137,19 @@ The heuristic is a deterministic baseline for demos and calibration, not a
 production-grade classifier. Its edge threshold, confidence threshold, and
 smoothing count are configured in the ROI JSON. A later CNN detector can use
 the same service contract without changing the camera API.
+
+## Prediction preprocessing
+
+Prediction preprocessing reads persisted context, lifecycle, allocation, and
+optimizer records into regular five-minute buckets. Every future predictor
+uses the same chronological 70/15/15 split: twelve historical buckets (one
+hour) predict the next bucket's normalized occupancy.
+
+Features include occupancy trends, cyclic time, weather, holiday/event state,
+entry/exit activity, active sessions, returning-vehicle rate, and aggregate
+walking-distance, congestion, and fairness values. RFID identifiers remain in
+the lifecycle boundary and are never included in model arrays. Continuous
+features are standardized from training data only, preventing validation/test
+leakage. Runtime inference will be cached per five-minute bucket in a later
+prediction-service slice; model training will never occur inside an API
+request.
