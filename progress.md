@@ -4,7 +4,7 @@ Last updated: 2026-09-04
 
 ## Current Status
 
-Milestone 3 (demo entry/exit API) is complete and verified on
+Milestone 4 (browser dashboard) is complete and verified on
 `feat/demo-parking-lifecycle`.
 
 ## Milestones
@@ -21,11 +21,22 @@ Milestone 3 (demo entry/exit API) is complete and verified on
 | Demo entry/exit API | Complete | 44 tests pass; entry, retry, exit, conflicts, rollback, and status are covered |
 | Vision occupancy pipeline | Not started | Five configurable ROIs, heuristic mode, smoothing, and tests work |
 | Prediction comparison | Not started | Shared split evaluates LSTM, GRU, and Transformer with required metrics |
-| Dashboard | Not started | Live five-slot state and both comparison tables are visible |
+| Dashboard | Complete | 48 tests pass; real-browser entry/exit, conflict, desktop, and mobile checks pass |
 | Firmware integration | Not started | Both sketches build and complete the documented hardware flow |
 | End-to-end demo | Not started | Seed, simulated camera, RFID entry, allocation, prediction, and UI run without hardware |
 
 ## Completed This Session
+
+- Added a responsive control-room dashboard served at `/dashboard` with no
+  frontend framework or external asset dependency.
+- Added live five-slot cards, availability totals, RFID entry/exit controls,
+  latest allocation details, recent activity, connectivity status, and the
+  persisted optimizer-run table.
+- Added accessible landmarks, labels, keyboard focus, live announcements,
+  reduced-motion support, and responsive desktop/mobile layouts.
+- Verified the real browser flow from five free slots through entry and exit,
+  including friendly conflict feedback and zero unexpected console errors.
+- Verified 48 tests, Ruff, and whitespace checks.
 
 - Added atomic simulated RFID entry and exit APIs with database-backed retry
   replay and a shared idempotency-key namespace.

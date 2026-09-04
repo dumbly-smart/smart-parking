@@ -52,3 +52,4 @@ Thumbs.db
 
 # Isolated development worktrees
 .worktrees/
+.playwright-cli/

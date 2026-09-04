@@ -1,8 +1,8 @@
 # Smart Parking
 
 Five-slot smart parking prototype with a FastAPI/SQLite server and a fully
-hardware-independent demo path. The remaining optimizer, vision, prediction,
-dashboard, and firmware milestones are tracked in `progress.md`.
+hardware-independent browser demo. The remaining vision, prediction, and
+firmware milestones are tracked in `progress.md`.
 
 ## Backend foundation
 
@@ -24,6 +24,23 @@ make run
 
 Open `http://127.0.0.1:8000/health`. The first startup creates the local SQLite
 database and idempotently seeds the five slots from `config/parking.yaml`.
+
+## Browser dashboard
+
+After `make run`, open `http://127.0.0.1:8000/dashboard`. The dashboard shows
+all five bays, live availability totals, active RFID assignments, recent
+activity, and optimizer runs. It refreshes parking state every two seconds.
+
+For a quick presentation:
+
+1. Enter `DEMO-CARD-1` in the RFID field.
+2. Select **Simulate entry** and show the assigned occupied bay, allocation
+   cost, gate action, and optimizer log.
+3. Select **Simulate exit** with the same RFID and show the bay return to free.
+4. Select exit again to demonstrate the friendly invalid-lifecycle error.
+
+Interactive API documentation remains available at
+`http://127.0.0.1:8000/docs`.
 
 Copy `.env.example` to `.env` to override local configuration. Hardware mode
 requires both `SMART_PARKING_MODE=hardware` and
