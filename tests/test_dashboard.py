@@ -69,9 +69,24 @@ def test_dashboard_contains_accessible_demo_controls(tmp_path: Path) -> None:
         'for="rfid-uid"',
         'id="entry-button"',
         'id="exit-button"',
-        'id="latest-assignment"',
+        'id="operation-result"',
+        'id="current-vehicles"',
         'id="activity-list"',
         'id="benchmark-body"',
-        'id="announcement" role="status" aria-live="polite"',
     ):
         assert expected in document
+
+
+def test_dashboard_places_operation_feedback_and_vehicles_by_controls(
+    tmp_path: Path,
+) -> None:
+    with TestClient(create_app(make_settings(tmp_path))) as client:
+        document = client.get("/dashboard").text
+
+    assert 'id="operation-result" class="operation-result operation-result--idle"' in document
+    assert 'role="status" aria-live="polite"' in document
+    assert 'id="current-vehicles"' in document
+    assert 'id="latest-assignment"' not in document
+    assert document.index('id="operation-result"') < document.index(
+        'id="current-vehicles"'
+    )
