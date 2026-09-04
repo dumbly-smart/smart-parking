@@ -9,7 +9,11 @@ import pytest
 
 from backend.app.config import SlotConfig
 from backend.app.db import Database
-from prediction.data import build_feature_timeline, parse_utc_timestamp
+from prediction.data import (
+    build_feature_timeline,
+    parse_utc_timestamp,
+    prepare_prediction_dataset,
+)
 from prediction.models import (
     CONTINUOUS_FEATURE_NAMES,
     FEATURE_NAMES,
@@ -82,6 +86,30 @@ def prediction_source(
         ),
         sessions=sessions,
         allocations=allocations,
+    )
+
+
+def regular_prediction_source(
+    *,
+    bucket_count: int,
+    slot_count: int,
+    occupancy_counts: tuple[int, ...] | None = None,
+    weather: str = "clear",
+    holiday: int = 0,
+    event: int = 0,
+) -> PredictionSourceData:
+    counts = (
+        occupancy_counts
+        if occupancy_counts is not None
+        else tuple(index % (slot_count + 1) for index in range(bucket_count))
+    )
+    assert len(counts) == bucket_count
+    return prediction_source(
+        slot_count=slot_count,
+        context_counts=counts,
+        weather=weather,
+        holiday=holiday,
+        event=event,
     )
 
 
@@ -438,6 +466,153 @@ def test_feature_timeline_rejects_duplicate_record_ids() -> None:
         build_feature_timeline(source, PreprocessingConfig())
 
     assert raised.value.code == "duplicate_id"
+
+
+def test_prepared_dataset_uses_independent_chronological_splits() -> None:
+    source = regular_prediction_source(bucket_count=120, slot_count=8)
+
+    dataset = prepare_prediction_dataset(source)
+
+    start = datetime(2026, 9, 4, 10, tzinfo=UTC)
+    assert dataset.train.inputs.shape == (72, 12, len(FEATURE_NAMES))
+    assert dataset.validation.inputs.shape == (6, 12, len(FEATURE_NAMES))
+    assert dataset.test.inputs.shape == (6, 12, len(FEATURE_NAMES))
+    assert dataset.source_started_at == start
+    assert dataset.source_ended_at == start + timedelta(minutes=119 * 5)
+    assert dataset.train_ended_at == start + timedelta(minutes=83 * 5)
+    assert dataset.validation_ended_at == start + timedelta(minutes=101 * 5)
+    assert dataset.train.target_timestamps[0] == start + timedelta(minutes=12 * 5)
+    assert dataset.train.target_timestamps[-1] <= dataset.train_ended_at
+    assert dataset.validation.target_timestamps[0] == start + timedelta(minutes=96 * 5)
+    assert dataset.validation.target_timestamps[0] > dataset.train_ended_at
+    assert dataset.test.target_timestamps[0] == start + timedelta(minutes=114 * 5)
+    assert dataset.test.target_timestamps[0] > dataset.validation_ended_at
+
+
+def test_scaling_uses_training_inputs_and_leaves_bounded_values_unscaled() -> None:
+    source = regular_prediction_source(
+        bucket_count=120,
+        slot_count=8,
+        occupancy_counts=tuple(index % 8 for index in range(84)) + (8,) * 36,
+        weather="rain",
+        holiday=1,
+        event=1,
+    )
+    timeline = build_feature_timeline(source, PreprocessingConfig())
+    resolved = tuple(bucket for bucket in timeline if bucket is not None)
+    raw_partitions = (resolved[:84], resolved[84:102], resolved[102:])
+    raw_inputs = tuple(
+        np.asarray(
+            [
+                [bucket.values for bucket in partition[target - 12 : target]]
+                for target in range(12, len(partition))
+            ],
+            dtype=np.float64,
+        )
+        for partition in raw_partitions
+    )
+    raw_targets = tuple(
+        np.asarray(
+            [
+                partition[target].values[FEATURE_NAMES.index("occupancy_ratio")]
+                for target in range(12, len(partition))
+            ],
+            dtype=np.float64,
+        )
+        for partition in raw_partitions
+    )
+    continuous_indices = tuple(
+        FEATURE_NAMES.index(name) for name in CONTINUOUS_FEATURE_NAMES
+    )
+    training_continuous = raw_inputs[0][:, :, continuous_indices].reshape(
+        -1, len(continuous_indices)
+    )
+    expected_means = np.mean(training_continuous, axis=0)
+    expected_scales = np.std(training_continuous, axis=0, ddof=0)
+    expected_scales = np.where(expected_scales == 0, 1.0, expected_scales)
+
+    dataset = prepare_prediction_dataset(source)
+
+    assert dataset.scaler.feature_indices == continuous_indices
+    np.testing.assert_allclose(dataset.scaler.means, expected_means)
+    np.testing.assert_allclose(dataset.scaler.scales, expected_scales)
+    entry_index = CONTINUOUS_FEATURE_NAMES.index("entry_count")
+    assert dataset.scaler.scales[entry_index] == 1.0
+
+    continuous_index_set = set(continuous_indices)
+    bounded_indices = tuple(
+        index for index in range(len(FEATURE_NAMES)) if index not in continuous_index_set
+    )
+    for prepared, expected_inputs, expected_targets in zip(
+        (dataset.train, dataset.validation, dataset.test),
+        raw_inputs,
+        raw_targets,
+        strict=True,
+    ):
+        np.testing.assert_allclose(
+            prepared.inputs[:, :, continuous_indices],
+            (expected_inputs[:, :, continuous_indices] - expected_means)
+            / expected_scales,
+        )
+        np.testing.assert_array_equal(
+            prepared.inputs[:, :, bounded_indices],
+            expected_inputs[:, :, bounded_indices],
+        )
+        np.testing.assert_array_equal(prepared.targets, expected_targets)
+
+
+def test_prepared_dataset_excludes_examples_that_span_missing_buckets() -> None:
+    source = regular_prediction_source(bucket_count=120, slot_count=8)
+    contexts = tuple(
+        context
+        for index, context in enumerate(source.context_samples)
+        if index not in (30, 83)
+    )
+
+    dataset = prepare_prediction_dataset(
+        replace(source, context_samples=contexts),
+        PreprocessingConfig(max_carry_intervals=0),
+    )
+
+    start = datetime(2026, 9, 4, 10, tzinfo=UTC)
+    missing_at = start + timedelta(minutes=30 * 5)
+    assert dataset.train.inputs.shape[0] == 58
+    assert all(
+        not missing_at <= timestamp <= missing_at + timedelta(minutes=12 * 5)
+        for timestamp in dataset.train.target_timestamps
+    )
+    assert dataset.train_ended_at == start + timedelta(minutes=82 * 5)
+
+
+def test_prepared_dataset_rejects_a_partition_without_examples() -> None:
+    source = regular_prediction_source(bucket_count=40, slot_count=8)
+
+    with pytest.raises(PredictionDataError) as raised:
+        prepare_prediction_dataset(source)
+
+    assert raised.value.code == "empty_split"
+    assert "validation" in raised.value.message
+
+
+def test_prepared_dataset_is_deterministic() -> None:
+    source = regular_prediction_source(bucket_count=120, slot_count=8)
+
+    first = prepare_prediction_dataset(source)
+    second = prepare_prediction_dataset(source)
+
+    assert first.split_id == second.split_id
+    assert len(first.split_id) == 64
+    assert first.split_id == (
+        "a697fd3c9f6921248ca6364f19c73d8cfd9ffc2a6c980f5a5962a8f87576318b"
+    )
+    for first_split, second_split in zip(
+        (first.train, first.validation, first.test),
+        (second.train, second.validation, second.test),
+        strict=True,
+    ):
+        np.testing.assert_array_equal(first_split.inputs, second_split.inputs)
+        np.testing.assert_array_equal(first_split.targets, second_split.targets)
+        assert first_split.target_timestamps == second_split.target_timestamps
 
 
 def test_preprocessing_config_has_approved_defaults() -> None:

@@ -1,13 +1,16 @@
 """Deterministic aggregation and feature engineering for prediction inputs."""
 
+import hashlib
 import json
 import math
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import UTC, datetime, timedelta
+from typing import cast
 
 import numpy as np
 
 from prediction.models import (
+    CONTINUOUS_FEATURE_NAMES,
     FEATURE_NAMES,
     WEATHER_CATEGORIES,
     AllocationFeatureRecord,
@@ -15,7 +18,10 @@ from prediction.models import (
     FeatureBucket,
     PredictionDataError,
     PredictionSourceData,
+    PreparedDataset,
+    PreparedSplit,
     PreprocessingConfig,
+    ScalerMetadata,
     SessionRecord,
 )
 
@@ -294,3 +300,146 @@ def build_feature_timeline(
         previous_resolved_ratio = occupancy_ratio
 
     return tuple(timeline)
+
+
+def _split_timeline(
+    timeline: tuple[FeatureBucket | None, ...], config: PreprocessingConfig
+) -> tuple[
+    tuple[FeatureBucket | None, ...],
+    tuple[FeatureBucket | None, ...],
+    tuple[FeatureBucket | None, ...],
+]:
+    train_end = math.floor(len(timeline) * config.train_fraction)
+    validation_end = train_end + math.floor(
+        len(timeline) * config.validation_fraction
+    )
+    return (
+        timeline[:train_end],
+        timeline[train_end:validation_end],
+        timeline[validation_end:],
+    )
+
+
+def _build_examples(
+    buckets: tuple[FeatureBucket | None, ...], config: PreprocessingConfig
+) -> tuple[np.ndarray, np.ndarray, tuple[datetime, ...]]:
+    inputs: list[tuple[tuple[float, ...], ...]] = []
+    targets: list[float] = []
+    timestamps: list[datetime] = []
+    target_offset = config.lookback_steps + config.horizon_steps - 1
+    target_feature = FEATURE_NAMES.index("occupancy_ratio")
+    for target_index in range(target_offset, len(buckets)):
+        input_end = target_index - config.horizon_steps + 1
+        input_start = input_end - config.lookback_steps
+        window = buckets[input_start:input_end]
+        target_bucket = buckets[target_index]
+        if target_bucket is None or any(bucket is None for bucket in window):
+            continue
+        resolved_window = cast(tuple[FeatureBucket, ...], window)
+        inputs.append(tuple(bucket.values for bucket in resolved_window))
+        targets.append(target_bucket.values[target_feature])
+        timestamps.append(target_bucket.timestamp)
+    return (
+        np.asarray(inputs, dtype=np.float64).reshape(
+            -1, config.lookback_steps, len(FEATURE_NAMES)
+        ),
+        np.asarray(targets, dtype=np.float64),
+        tuple(timestamps),
+    )
+
+
+def _partition_ended_at(
+    buckets: tuple[FeatureBucket | None, ...], partition: str
+) -> datetime:
+    for bucket in reversed(buckets):
+        if bucket is not None:
+            return bucket.timestamp
+    raise PredictionDataError(
+        "empty_split", f"{partition} partition has no resolved boundary bucket"
+    )
+
+
+def prepare_prediction_dataset(
+    source: PredictionSourceData, config: PreprocessingConfig | None = None
+) -> PreparedDataset:
+    """Build deterministic, leakage-safe chronological prediction splits."""
+    resolved_config = config if config is not None else PreprocessingConfig()
+    timeline = build_feature_timeline(source, resolved_config)
+    train_timeline, validation_timeline, test_timeline = _split_timeline(
+        timeline, resolved_config
+    )
+
+    examples = tuple(
+        _build_examples(partition, resolved_config)
+        for partition in (train_timeline, validation_timeline, test_timeline)
+    )
+    for partition_name, (_, targets, _) in zip(
+        ("train", "validation", "test"), examples, strict=True
+    ):
+        if targets.size == 0:
+            raise PredictionDataError(
+                "empty_split", f"{partition_name} partition contains no examples"
+            )
+
+    (train_inputs, train_targets, train_timestamps), (
+        validation_inputs,
+        validation_targets,
+        validation_timestamps,
+    ), (test_inputs, test_targets, test_timestamps) = examples
+    continuous_indices = tuple(
+        FEATURE_NAMES.index(name) for name in CONTINUOUS_FEATURE_NAMES
+    )
+    training_continuous = train_inputs[:, :, continuous_indices].reshape(
+        -1, len(continuous_indices)
+    )
+    means = np.mean(training_continuous, axis=0)
+    scales = np.std(training_continuous, axis=0, ddof=0)
+    scales = np.where(scales == 0, 1.0, scales)
+    for inputs in (train_inputs, validation_inputs, test_inputs):
+        inputs[:, :, continuous_indices] = (
+            inputs[:, :, continuous_indices] - means
+        ) / scales
+
+    if not timeline or timeline[0] is None:
+        raise PredictionDataError(
+            "empty_split", "source partition has no resolved starting boundary bucket"
+        )
+    source_started_at = timeline[0].timestamp
+    source_ended_at = _partition_ended_at(timeline, "source")
+    train_ended_at = _partition_ended_at(train_timeline, "train")
+    validation_ended_at = _partition_ended_at(validation_timeline, "validation")
+
+    identity = {
+        "config": asdict(resolved_config),
+        "feature_names": FEATURE_NAMES,
+        "target_name": "next_occupancy_ratio",
+        "slot_count": source.slot_count,
+        "source_started_at": source_started_at.isoformat(),
+        "source_ended_at": source_ended_at.isoformat(),
+        "train_ended_at": train_ended_at.isoformat(),
+        "validation_ended_at": validation_ended_at.isoformat(),
+    }
+    canonical_json = json.dumps(identity, sort_keys=True, separators=(",", ":"))
+    split_id = hashlib.sha256(canonical_json.encode("utf-8")).hexdigest()
+
+    return PreparedDataset(
+        feature_names=FEATURE_NAMES,
+        target_name="occupancy_ratio",
+        train=PreparedSplit(train_inputs, train_targets, train_timestamps),
+        validation=PreparedSplit(
+            validation_inputs, validation_targets, validation_timestamps
+        ),
+        test=PreparedSplit(test_inputs, test_targets, test_timestamps),
+        scaler=ScalerMetadata(
+            feature_indices=continuous_indices,
+            means=tuple(float(value) for value in means),
+            scales=tuple(float(value) for value in scales),
+        ),
+        split_id=split_id,
+        source_started_at=source_started_at,
+        source_ended_at=source_ended_at,
+        train_ended_at=train_ended_at,
+        validation_ended_at=validation_ended_at,
+        config=resolved_config,
+        slot_count=source.slot_count,
+    )
