@@ -34,10 +34,12 @@ activity, and optimizer runs. It refreshes parking state every two seconds.
 For a quick presentation:
 
 1. Enter `DEMO-CARD-1` in the RFID field.
-2. Select **Simulate entry** and show the assigned occupied bay, allocation
-   cost, gate action, and optimizer log.
-3. Select **Simulate exit** with the same RFID and show the bay return to free.
-4. Select exit again to demonstrate the friendly invalid-lifecycle error.
+2. Select **Simulate entry**. The result confirms the assigned bay, which also
+   appears under **Current parked vehicles** and changes to occupied.
+3. Select **Simulate exit** with the same RFID. The result confirms the exit,
+   the bay returns to free, and the vehicle disappears from the active list.
+4. Select exit again to demonstrate the visible invalid-lifecycle error beside
+   the controls.
 
 Interactive API documentation remains available at
 `http://127.0.0.1:8000/docs`.
