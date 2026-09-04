@@ -2,13 +2,13 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from collections.abc import Callable, Iterator, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 
 from backend.app.config import SlotConfig
-from backend.app.models.occupancy import OccupancyTransition
+from backend.app.models.occupancy import OccupancyPersistenceResult, OccupancyTransition
 from backend.app.models.parking import (
     EntryResponse,
     ExitResponse,
@@ -317,12 +317,14 @@ class Database:
         self,
         transitions: Sequence[OccupancyTransition],
         observed_at: str,
-    ) -> frozenset[int]:
+        expected_occupancy: Mapping[int, bool],
+    ) -> OccupancyPersistenceResult:
         blocked: set[int] = set()
         with self.connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
-            for transition in transitions:
-                slot = connection.execute(
+            slots: dict[int, sqlite3.Row] = {}
+            for slot_id in expected_occupancy:
+                row = connection.execute(
                     """
                     SELECT s.occupied,
                            EXISTS (
@@ -332,10 +334,29 @@ class Database:
                     FROM parking_slots AS s
                     WHERE s.id = ?
                     """,
-                    (transition.slot_id,),
+                    (slot_id,),
                 ).fetchone()
+                if row is None:
+                    raise LookupError(f"unknown parking slot ID {slot_id}")
+                slots[slot_id] = row
+            if any(
+                bool(slots[slot_id]["occupied"]) != expected
+                for slot_id, expected in expected_occupancy.items()
+            ):
+                return OccupancyPersistenceResult(
+                    snapshot_matched=False,
+                    blocked_slot_ids=frozenset(),
+                    occupied_slot_ids=frozenset(
+                        slot_id for slot_id, slot in slots.items() if bool(slot["occupied"])
+                    ),
+                )
+
+            for transition in transitions:
+                slot = slots.get(transition.slot_id)
                 if slot is None:
-                    raise LookupError(f"unknown parking slot ID {transition.slot_id}")
+                    raise ValueError(
+                        f"transition for unobserved parking slot ID {transition.slot_id}"
+                    )
                 if not transition.occupied and bool(slot["has_active_session"]):
                     blocked.add(transition.slot_id)
                     continue
@@ -372,7 +393,18 @@ class Database:
                         observed_at,
                     ),
                 )
-        return frozenset(blocked)
+            occupied_slot_ids = frozenset(
+                int(row["id"])
+                for row in connection.execute(
+                    "SELECT id FROM parking_slots WHERE occupied = 1"
+                )
+                if int(row["id"]) in expected_occupancy
+            )
+        return OccupancyPersistenceResult(
+            snapshot_matched=True,
+            blocked_slot_ids=frozenset(blocked),
+            occupied_slot_ids=occupied_slot_ids,
+        )
 
     def enter_vehicle(
         self,

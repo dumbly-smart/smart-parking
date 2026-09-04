@@ -2,13 +2,17 @@ from __future__ import annotations
 
 import sqlite3
 from collections.abc import Sequence
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from threading import Event
 
 import pytest
 
 from backend.app.config import SlotConfig
 from backend.app.db import Database
+from backend.app.models.parking import ParkingStatusResponse
 from backend.app.services.occupancy import OccupancyService
+from optimization.models import AllocationResult
 from vision.models import DetectorObservation
 
 
@@ -18,6 +22,23 @@ class FakeDetector:
 
     def detect(self, image_bytes: bytes) -> tuple[DetectorObservation, ...]:
         return next(self._frames)
+
+
+class LifecycleRaceDatabase(Database):
+    def __init__(self, path: Path) -> None:
+        super().__init__(path)
+        self.snapshot_read = Event()
+        self.lifecycle_committed = Event()
+        self._coordinate_once = True
+
+    def parking_status(self) -> ParkingStatusResponse:
+        status = super().parking_status()
+        if self._coordinate_once:
+            self._coordinate_once = False
+            self.snapshot_read.set()
+            if not self.lifecycle_committed.wait(timeout=5):
+                raise TimeoutError("lifecycle transaction did not complete")
+        return status
 
 
 def observation(
@@ -273,3 +294,49 @@ def test_event_failure_rolls_back_complete_frame_and_does_not_advance_streaks(
     ]
     assert persisted_occupancy(database) == {1: 1, 2: 1}
     assert len(persisted_events(database)) == 2
+
+
+def test_lifecycle_commit_between_snapshot_and_transition_reconciles_response(
+    tmp_path: Path,
+) -> None:
+    database = LifecycleRaceDatabase(tmp_path / "parking.db")
+    database.initialize(
+        [
+            SlotConfig(id=1, name="S1", walking_distance=0.5, zone="test"),
+            SlotConfig(id=2, name="S2", walking_distance=0.5, zone="test"),
+        ]
+    )
+    free_frame = (observation(1, False), observation(2, False))
+    service = service_for(database, [free_frame])
+
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        response_future = executor.submit(service.process, b"frame-with-entry-race")
+        assert database.snapshot_read.wait(timeout=5)
+        database.enter_vehicle(
+            "CARD-1",
+            "entry-1",
+            lambda slots: AllocationResult(
+                algorithm="ga",
+                scenario_id="entry-race",
+                chosen_slot_id=1,
+                best_cost=0.1,
+                iterations=1,
+                runtime_ms=0.0,
+                objective_breakdown={
+                    "distance": 0.1,
+                    "congestion": 0.0,
+                    "waiting": 0.0,
+                    "fairness": 0.0,
+                },
+                seed=1,
+            ),
+        )
+        database.lifecycle_committed.set()
+        response = response_future.result(timeout=5)
+
+    durable = {slot_id: bool(value) for slot_id, value in persisted_occupancy(database).items()}
+    assert {slot.slot_id: slot.accepted_occupied for slot in response.slots} == durable
+    assert [(slot.slot_id, slot.outcome, slot.consecutive_frames) for slot in response.slots] == [
+        (1, "pending", 1),
+        (2, "unchanged", 0),
+    ]

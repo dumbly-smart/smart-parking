@@ -13,6 +13,14 @@ class OccupancyTransition(BaseModel):
     confidence: float = Field(ge=0, le=1)
 
 
+class OccupancyPersistenceResult(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    snapshot_matched: bool
+    blocked_slot_ids: frozenset[int]
+    occupied_slot_ids: frozenset[int]
+
+
 class SlotOccupancyResult(BaseModel):
     model_config = ConfigDict(frozen=True)
 
