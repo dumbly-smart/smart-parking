@@ -27,7 +27,7 @@ secrets.*
 data/
 datasets/
 artifacts/
-models/
+/models/
 runs/
 checkpoints/
 *.h5
