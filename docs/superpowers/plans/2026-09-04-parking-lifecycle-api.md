@@ -3,7 +3,7 @@
 > **For agentic workers:** REQUIRED SUB-SKILL: Use
 > superpowers:subagent-driven-development (recommended) or
 > superpowers:executing-plans to implement this plan task-by-task. Steps use
-> checkbox (`- [ ]`) syntax for tracking.
+> checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Deliver atomic, retry-safe RFID entry and exit plus a five-slot parking-status API for hardware and simulated clients.
 
@@ -41,7 +41,7 @@
 - Produces: `VehicleOperationRequest`, `EntryResponse`, `ExitResponse`, `ParkingSlotStatus`, `ParkingStatusResponse`, `ParkingSlotRecord`, and `ParkingConflict`
 - Produces: nullable `parking_sessions.exit_idempotency_key`, `entry_slot_name`, and `exit_slot_name` plus unique partial index `unique_exit_idempotency_key`
 
-- [ ] **Step 1: Write failing schema and migration tests**
+- [x] **Step 1: Write failing schema and migration tests**
 
 ```python
 def test_vehicle_operation_request_normalizes_identifiers() -> None:
@@ -81,13 +81,13 @@ def test_initialize_migrates_exit_idempotency_column(tmp_path: Path) -> None:
     assert "unique_exit_idempotency_key" in indexes
 ```
 
-- [ ] **Step 2: Run the tests and verify RED**
+- [x] **Step 2: Run the tests and verify RED**
 
 Run: `.venv/bin/python -m pytest tests/test_parking_api.py -v`
 
 Expected: collection fails because `backend.app.models.parking` does not exist.
 
-- [ ] **Step 3: Implement immutable contracts**
+- [x] **Step 3: Implement immutable contracts**
 
 ```python
 class VehicleOperationRequest(BaseModel):
@@ -120,7 +120,7 @@ contains `session_id`, `rfid_uid`, `slot_id`, `slot_name`, `optimizer`,
 `ParkingSlotStatus` contains persisted metadata plus nullable active-session
 fields. Validate `ParkingStatusResponse.slots` contains IDs 1 through 5.
 
-- [ ] **Step 4: Implement the idempotent migration**
+- [x] **Step 4: Implement the idempotent migration**
 
 Add `exit_idempotency_key TEXT` to fresh DDL. After `executescript(SCHEMA)`,
 inspect and migrate older databases before creating the index:
@@ -144,13 +144,13 @@ connection.execute(
 )
 ```
 
-- [ ] **Step 5: Run focused regression tests and verify GREEN**
+- [x] **Step 5: Run focused regression tests and verify GREEN**
 
 Run: `.venv/bin/python -m pytest tests/test_parking_api.py tests/test_foundation.py -v`
 
 Expected: all collected tests pass.
 
-- [ ] **Step 6: Commit the contract slice**
+- [x] **Step 6: Commit the contract slice**
 
 ```bash
 git add backend/app/models backend/app/db.py tests/test_parking_api.py
@@ -175,7 +175,7 @@ git commit -m "feat: define parking lifecycle contracts"
 - Produces: `ParkingService.enter(request: VehicleOperationRequest) -> EntryResponse`
 - Produces: `POST /api/vehicle/entry`
 
-- [ ] **Step 1: Write a failing successful-entry integration test**
+- [x] **Step 1: Write a failing successful-entry integration test**
 
 ```python
 def test_entry_allocates_free_slot_and_persists_atomically(tmp_path: Path) -> None:
@@ -208,13 +208,13 @@ def test_entry_allocates_free_slot_and_persists_atomically(tmp_path: Path) -> No
     assert occupied == 1
 ```
 
-- [ ] **Step 2: Run the entry test and verify RED**
+- [x] **Step 2: Run the entry test and verify RED**
 
 Run: `.venv/bin/python -m pytest tests/test_parking_api.py::test_entry_allocates_free_slot_and_persists_atomically -v`
 
 Expected: `404 Not Found` because the route is absent.
 
-- [ ] **Step 3: Implement optimizer request construction**
+- [x] **Step 3: Implement optimizer request construction**
 
 ```python
 def _seed_for(request: VehicleOperationRequest) -> int:
@@ -252,7 +252,7 @@ lookup, active-session validation, five-slot read, callback invocation, and
 inserts for optimizer run, session, allocation, and occupied-slot update. Catch
 no domain errors inside the transaction so the connection context rolls back.
 
-- [ ] **Step 4: Register the service and route, then verify GREEN**
+- [x] **Step 4: Register the service and route, then verify GREEN**
 
 ```python
 @router.post("/api/vehicle/entry", response_model=EntryResponse)
@@ -271,7 +271,7 @@ Run: `.venv/bin/python -m pytest tests/test_parking_api.py::test_entry_allocates
 
 Expected: PASS.
 
-- [ ] **Step 5: Add failing retry, conflict, capacity, safety, and rollback tests**
+- [x] **Step 5: Add failing retry, conflict, capacity, safety, and rollback tests**
 
 Add independent tests that prove:
 
@@ -291,7 +291,7 @@ database before posting.
 Add boundary tests for 122-, 123-, and 128-character keys, a known unsigned
 SHA-256 seed vector, and restart-based entry/exit replay after slot renaming.
 
-- [ ] **Step 6: Run the new tests and verify RED, then complete entry branches**
+- [x] **Step 6: Run the new tests and verify RED, then complete entry branches**
 
 Run: `.venv/bin/python -m pytest tests/test_parking_api.py -k 'entry or capacity or rollback' -v`
 
@@ -299,7 +299,7 @@ Expected before implementation: failures for missing replay and conflict
 branches. Add exact key-identity queries and replay reconstruction, then rerun
 until all selected tests pass.
 
-- [ ] **Step 7: Commit the entry slice**
+- [x] **Step 7: Commit the entry slice**
 
 ```bash
 git add backend/app/services backend/app/routes/parking.py backend/app/db.py backend/app/main.py tests/test_parking_api.py
@@ -322,7 +322,7 @@ git commit -m "feat: add atomic vehicle entry"
 - Produces: `ParkingService.exit(...)`, `ParkingService.status()`
 - Produces: `POST /api/vehicle/exit`, `GET /api/parking/status`
 
-- [ ] **Step 1: Write failing exit lifecycle and replay tests**
+- [x] **Step 1: Write failing exit lifecycle and replay tests**
 
 ```python
 def test_exit_closes_session_and_frees_slot(tmp_path: Path) -> None:
@@ -350,13 +350,13 @@ def test_exit_closes_session_and_frees_slot(tmp_path: Path) -> None:
 Add separate tests for `vehicle_not_parked`, cross-operation key reuse,
 cross-vehicle key reuse, and preservation of the original exit timestamp.
 
-- [ ] **Step 2: Run exit tests and verify RED**
+- [x] **Step 2: Run exit tests and verify RED**
 
 Run: `.venv/bin/python -m pytest tests/test_parking_api.py -k 'exit or idempotency_conflict' -v`
 
 Expected: `404 Not Found` for the exit endpoint.
 
-- [ ] **Step 3: Implement exit transaction and endpoint**
+- [x] **Step 3: Implement exit transaction and endpoint**
 
 ```python
 @router.post("/api/vehicle/exit", response_model=ExitResponse)
@@ -375,7 +375,7 @@ key namespace, replay an identical stored exit, select the active session,
 write one UTC exit timestamp and key, free the slot using the same timestamp,
 and return the committed values.
 
-- [ ] **Step 4: Write failing status and concurrent-entry tests**
+- [x] **Step 4: Write failing status and concurrent-entry tests**
 
 ```python
 def test_status_returns_five_ordered_slots_with_active_session(tmp_path: Path) -> None:
@@ -399,7 +399,7 @@ The concurrency test submits distinct RFID operations through two threads and
 asserts both successful responses have different slot IDs and two active
 sessions exist.
 
-- [ ] **Step 5: Implement status query and verify GREEN**
+- [x] **Step 5: Implement status query and verify GREEN**
 
 Use a left join from `parking_slots` through active `parking_sessions` and
 `vehicles`, ordered by slot ID. Expose it through:
@@ -414,7 +414,7 @@ Run: `.venv/bin/python -m pytest tests/test_parking_api.py -v`
 
 Expected: all parking lifecycle tests pass.
 
-- [ ] **Step 6: Commit exit and status**
+- [x] **Step 6: Commit exit and status**
 
 ```bash
 git add backend/app/db.py backend/app/services/parking.py backend/app/routes/parking.py tests/test_parking_api.py
@@ -435,7 +435,7 @@ git commit -m "feat: add vehicle exit and parking status"
 - Records: persistent shared idempotency namespace and `BEGIN IMMEDIATE` transaction boundary
 - Advances: Milestone 3 to complete and vision occupancy to next task
 
-- [ ] **Step 1: Add README API examples**
+- [x] **Step 1: Add README API examples**
 
 Document curl examples using these exact payloads:
 
@@ -451,13 +451,13 @@ curl -X POST http://127.0.0.1:8000/api/vehicle/exit \
 curl http://127.0.0.1:8000/api/parking/status
 ```
 
-- [ ] **Step 2: Append ADR-009**
+- [x] **Step 2: Append ADR-009**
 
 Record that entry and exit keys share one persisted namespace, lifecycle
 transactions use `BEGIN IMMEDIATE`, and responses commanding the gate open are
 returned only after successful commit.
 
-- [ ] **Step 3: Run complete verification**
+- [x] **Step 3: Run complete verification**
 
 Run:
 
@@ -470,13 +470,13 @@ git diff --check
 Expected: every test passes, Ruff reports no errors, and the diff check is
 silent.
 
-- [ ] **Step 4: Update progress with fresh evidence**
+- [x] **Step 4: Update progress with fresh evidence**
 
 Set Parking lifecycle API to complete, record exact test counts and commands,
 active branch and latest implementation commit, and name the occupancy
 heuristic/ROI camera update flow as the next concrete task.
 
-- [ ] **Step 5: Review and commit documentation**
+- [x] **Step 5: Review and commit documentation**
 
 ```bash
 git add README.md decisions.md progress.md

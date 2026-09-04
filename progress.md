@@ -1,11 +1,11 @@
 # Smart Parking Project Progress
 
-Last updated: 2026-09-03
+Last updated: 2026-09-04
 
 ## Current Status
 
-Milestone 2 (allocation domain and optimizer comparison) is complete and
-verified on `main`, starting from commit `dd943a4`.
+Milestone 3 (parking lifecycle API) is complete and verified on branch
+`parking-lifecycle-api` through implementation commit `36f142a`.
 
 ## Milestones
 
@@ -18,7 +18,7 @@ verified on `main`, starting from commit `dd943a4`.
 | Local Git repository initialized | Complete | Repository on `main` with an initial documentation commit |
 | Python/backend foundation | Complete | 6 tests pass; lint passes; health smoke reports five slots |
 | Optimizer comparison | Complete | 20 focused tests; shared scenario API atomically persists GA/PSO/ACO metrics |
-| Demo entry/exit API | Not started | Simulated RFID flow allocates only free slots and persists sessions |
+| Parking lifecycle API | Complete | 23 focused and 49 full tests pass; RFID lifecycle is atomic and retry-safe |
 | Vision occupancy pipeline | Not started | Five configurable ROIs, heuristic mode, smoothing, and tests work |
 | Prediction comparison | Not started | Shared split evaluates LSTM, GRU, and Transformer with required metrics |
 | Dashboard | Not started | Live five-slot state and both comparison tables are visible |
@@ -26,6 +26,18 @@ verified on `main`, starting from commit `dd943a4`.
 | End-to-end demo | Not started | Seed, simulated camera, RFID entry, allocation, prediction, and UI run without hardware |
 
 ## Completed This Session
+
+- Added production entry, exit, and parking-status contracts shared by hardware
+  and simulated clients.
+- Added database-backed entry/exit idempotency with one cross-operation key
+  namespace and idempotent migration for existing SQLite databases.
+- Added reserved lifecycle transactions that persist optimizer, session,
+  allocation, and slot changes atomically and never allocate an occupied slot.
+- Added integration coverage for retries, conflicts, full capacity, rollback,
+  active status, and concurrent entries.
+- Verified 23 focused lifecycle tests and 49 full tests; Ruff and
+  `git diff --check` pass. The two test warnings are pre-existing deprecations
+  from the FastAPI/Starlette test-client dependency stack.
 
 - Added a normalized allocation request/result model and weighted objective
   shared by deterministic seeded GA, PSO, and ACO implementations.
@@ -58,9 +70,10 @@ verified on `main`, starting from commit `dd943a4`.
 
 ## Next Task
 
-Begin Milestone 3 with API/session/idempotency contracts and failing integration
-tests for entry, retry, exit, full capacity, and occupied-slot safety.
+Begin Milestone 4 with five configurable ROIs, deterministic heuristic
+occupancy classification, temporal smoothing, and camera update integration
+tests.
 
 ## Blockers
 
-None for demo-mode backend development. Physical integration will later require the final pin map, local Wi-Fi credentials, camera placement, calibrated ROI coordinates, and access to the listed hardware.
+None for backend development. Physical integration will later require the final pin map, local Wi-Fi credentials, camera placement, calibrated ROI coordinates, and access to the listed hardware.
