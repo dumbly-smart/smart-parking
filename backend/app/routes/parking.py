@@ -4,6 +4,7 @@ from backend.app.models.parking import (
     EntryResponse,
     ExitResponse,
     ParkingConflict,
+    ParkingStatusResponse,
     VehicleOperationRequest,
 )
 from optimization.models import NoAvailableSlotError
@@ -30,3 +31,8 @@ def exit_vehicle(payload: VehicleOperationRequest, request: Request) -> ExitResp
         raise HTTPException(
             status_code=409, detail={"code": exc.code, "message": exc.message}
         ) from exc
+
+
+@router.get("/api/parking/status", response_model=ParkingStatusResponse)
+def parking_status(request: Request) -> ParkingStatusResponse:
+    return request.app.state.parking_service.status()

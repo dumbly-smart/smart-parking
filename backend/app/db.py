@@ -12,6 +12,8 @@ from backend.app.models.parking import (
     ExitResponse,
     ParkingConflict,
     ParkingSlotRecord,
+    ParkingSlotStatus,
+    ParkingStatusResponse,
 )
 from optimization.models import AllocationResult, PersistedOptimizerRun
 
@@ -397,3 +399,19 @@ class Database:
             slot_name=active["slot_name"],
             exited_at=exited_at,
         )
+
+    def parking_status(self) -> ParkingStatusResponse:
+        with self.connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT s.id, s.name, s.walking_distance, s.zone, s.occupied,
+                       s.updated_at, ps.id AS active_session_id, v.rfid_uid
+                FROM parking_slots s
+                LEFT JOIN parking_sessions ps
+                    ON ps.slot_id = s.id AND ps.exited_at IS NULL
+                LEFT JOIN vehicles v ON v.id = ps.vehicle_id
+                ORDER BY s.id
+                """
+            ).fetchall()
+        statuses = tuple(ParkingSlotStatus.model_validate(dict(row)) for row in rows)
+        return ParkingStatusResponse(slots=statuses)

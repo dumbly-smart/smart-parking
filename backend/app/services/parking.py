@@ -8,6 +8,7 @@ from backend.app.models.parking import (
     EntryResponse,
     ExitResponse,
     ParkingSlotRecord,
+    ParkingStatusResponse,
     VehicleOperationRequest,
 )
 from optimization.benchmark import OPTIMIZERS
@@ -53,3 +54,6 @@ class ParkingService:
 
     def exit(self, request: VehicleOperationRequest) -> ExitResponse:
         return self.database.exit_vehicle(request.rfid_uid, request.idempotency_key)
+
+    def status(self) -> ParkingStatusResponse:
+        return self.database.parking_status()

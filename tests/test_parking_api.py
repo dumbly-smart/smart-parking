@@ -311,3 +311,21 @@ def test_entry_key_cannot_be_reused_for_another_vehicle(tmp_path: Path) -> None:
     assert response.status_code == 409
     assert response.json()["detail"]["code"] == "idempotency_conflict"
     assert table_counts(settings.database_path)["vehicles"] == 1
+
+
+def test_status_returns_ordered_slots_and_active_session(tmp_path: Path) -> None:
+    settings = make_settings(tmp_path)
+    with TestClient(create_app(settings)) as client:
+        response = client.get("/api/parking/status")
+        assert response.status_code == 200
+        initial = response.json()["slots"]
+        assert [slot["id"] for slot in initial] == [1, 2, 3, 4, 5]
+        assert all(slot["active_session_id"] is None for slot in initial)
+
+        entry = post_entry(client).json()
+        status = client.get("/api/parking/status").json()["slots"]
+
+    assigned = next(slot for slot in status if slot["id"] == entry["slot_id"])
+    assert assigned["occupied"] is True
+    assert assigned["active_session_id"] == entry["session_id"]
+    assert assigned["rfid_uid"] == "CARD-1"
