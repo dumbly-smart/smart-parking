@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from collections.abc import Iterator, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
 from pathlib import Path
 
 from backend.app.config import SlotConfig
+from backend.app.models.parking import EntryResponse, ParkingConflict, ParkingSlotRecord
 from optimization.models import AllocationResult, PersistedOptimizerRun
 
 SCHEMA = """
@@ -194,3 +195,127 @@ class Database:
             )
             for row in rows
         ]
+
+    def enter_vehicle(
+        self,
+        rfid_uid: str,
+        idempotency_key: str,
+        allocate: Callable[[tuple[ParkingSlotRecord, ...]], AllocationResult],
+    ) -> EntryResponse:
+        with self.connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            existing = connection.execute(
+                """
+                SELECT ps.id AS session_id, v.rfid_uid, s.id AS slot_id,
+                       s.name AS slot_name, r.algorithm AS optimizer,
+                       r.best_cost AS allocation_cost, ps.entered_at
+                FROM parking_sessions ps
+                JOIN vehicles v ON v.id = ps.vehicle_id
+                JOIN parking_slots s ON s.id = ps.slot_id
+                JOIN allocations a ON a.session_id = ps.id
+                JOIN optimizer_runs r ON r.id = a.optimizer_run_id
+                WHERE ps.entry_idempotency_key = ?
+                """,
+                (idempotency_key,),
+            ).fetchone()
+            if existing is not None:
+                if existing["rfid_uid"] != rfid_uid:
+                    raise ParkingConflict(
+                        "idempotency_conflict",
+                        "idempotency key is already used by another operation",
+                    )
+                return EntryResponse.model_validate(dict(existing))
+            exit_key = connection.execute(
+                "SELECT 1 FROM parking_sessions WHERE exit_idempotency_key = ?",
+                (idempotency_key,),
+            ).fetchone()
+            if exit_key is not None:
+                raise ParkingConflict(
+                    "idempotency_conflict",
+                    "idempotency key is already used by another operation",
+                )
+            active = connection.execute(
+                """
+                SELECT 1 FROM parking_sessions ps
+                JOIN vehicles v ON v.id = ps.vehicle_id
+                WHERE v.rfid_uid = ? AND ps.exited_at IS NULL
+                """,
+                (rfid_uid,),
+            ).fetchone()
+            if active is not None:
+                raise ParkingConflict(
+                    "vehicle_already_parked", "vehicle already has an active parking session"
+                )
+            connection.execute(
+                "INSERT OR IGNORE INTO vehicles (rfid_uid) VALUES (?)", (rfid_uid,)
+            )
+            vehicle = connection.execute(
+                "SELECT id FROM vehicles WHERE rfid_uid = ?", (rfid_uid,)
+            ).fetchone()
+            rows = connection.execute(
+                """
+                SELECT id, name, walking_distance, zone, occupied, updated_at
+                FROM parking_slots ORDER BY id
+                """
+            ).fetchall()
+            slots = tuple(ParkingSlotRecord.model_validate(dict(row)) for row in rows)
+            result = allocate(slots)
+            run_cursor = connection.execute(
+                """
+                INSERT INTO optimizer_runs (
+                    algorithm, scenario_id, chosen_slot_id, best_cost, iterations,
+                    runtime_ms, objective_breakdown, seed
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    result.algorithm,
+                    result.scenario_id,
+                    result.chosen_slot_id,
+                    result.best_cost,
+                    result.iterations,
+                    result.runtime_ms,
+                    json.dumps(result.objective_breakdown.model_dump(), sort_keys=True),
+                    result.seed,
+                ),
+            )
+            session_cursor = connection.execute(
+                """
+                INSERT INTO parking_sessions (vehicle_id, slot_id, entry_idempotency_key)
+                VALUES (?, ?, ?)
+                """,
+                (vehicle["id"], result.chosen_slot_id, idempotency_key),
+            )
+            connection.execute(
+                """
+                INSERT INTO allocations (session_id, optimizer_run_id, slot_id, idempotency_key)
+                VALUES (?, ?, ?, ?)
+                """,
+                (
+                    session_cursor.lastrowid,
+                    run_cursor.lastrowid,
+                    result.chosen_slot_id,
+                    idempotency_key,
+                ),
+            )
+            connection.execute(
+                """
+                UPDATE parking_slots
+                SET occupied = 1, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+                WHERE id = ?
+                """,
+                (result.chosen_slot_id,),
+            )
+            saved = connection.execute(
+                """
+                SELECT ps.id AS session_id, v.rfid_uid, s.id AS slot_id,
+                       s.name AS slot_name, ps.entered_at
+                FROM parking_sessions ps
+                JOIN vehicles v ON v.id = ps.vehicle_id
+                JOIN parking_slots s ON s.id = ps.slot_id
+                WHERE ps.id = ?
+                """,
+                (session_cursor.lastrowid,),
+            ).fetchone()
+        return EntryResponse(
+            **dict(saved), optimizer=result.algorithm, allocation_cost=result.best_cost
+        )
