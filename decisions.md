@@ -225,3 +225,35 @@ Configuration changes do not alter prior successful responses, all unsigned
 64-bit seeds round-trip without precision loss, and maximum-length valid keys
 cannot overflow the optimizer scenario contract. Existing integer seed rows
 remain readable.
+
+## ADR-011: Configuration-driven slot cardinality
+
+- Date: 2026-09-04
+- Status: Accepted
+
+### Context
+
+The physical prototype currently has five parking slots, but fixed five-slot
+validation in configuration, persistence, API schemas, and optimizer contracts
+would require source changes for every larger or smaller deployment. The vision
+pipeline must return all configured slot observations rather than a hard-coded
+five-element result.
+
+### Decision
+
+Treat five slots as the committed demo and hardware configuration, not a
+software invariant. Accept any non-empty collection of uniquely identified
+positive slot IDs, require ROI mappings to match that configured set exactly,
+and make persistence, lifecycle, allocation, status, and vision contracts
+cardinality-independent. Preserve deterministic optimizer comparison on the
+same candidate set for every algorithm.
+
+This decision supersedes the fixed five-candidate portion of ADR-008. Its
+remaining optimizer-contract requirements stay accepted.
+
+### Consequences
+
+Deployments can change slot count through configuration while the current demo
+continues to use five slots. The legacy SQLite slot-ID constraint requires an
+idempotent data-preserving migration. Firmware remains limited by its configured
+physical outputs until its own integration milestone.

@@ -4,8 +4,9 @@ Last updated: 2026-09-04
 
 ## Current Status
 
-Milestone 3 (parking lifecycle API) is complete, merged, and verified on
-`main`; implementation changes run through commit `36f142a`.
+Milestone 4 (scalable vision occupancy pipeline) is in design on `main`.
+Milestone 3 remains complete and verified through implementation commit
+`36f142a`.
 
 ## Milestones
 
@@ -19,13 +20,19 @@ Milestone 3 (parking lifecycle API) is complete, merged, and verified on
 | Python/backend foundation | Complete | 6 tests pass; lint passes; health smoke reports five slots |
 | Optimizer comparison | Complete | 20 focused tests; shared scenario API atomically persists GA/PSO/ACO metrics |
 | Parking lifecycle API | Complete | 23 focused and 49 full tests pass; RFID lifecycle is atomic and retry-safe |
-| Vision occupancy pipeline | Not started | Five configurable ROIs, heuristic mode, smoothing, and tests work |
+| Vision occupancy pipeline | In progress | Configurable ROIs, heuristic mode, smoothing, scalable slot cardinality, and tests work |
 | Prediction comparison | Not started | Shared split evaluates LSTM, GRU, and Transformer with required metrics |
 | Dashboard | Not started | Live five-slot state and both comparison tables are visible |
 | Firmware integration | Not started | Both sketches build and complete the documented hardware flow |
 | End-to-end demo | Not started | Seed, simulated camera, RFID entry, allocation, prediction, and UI run without hardware |
 
 ## Completed This Session
+
+- Approved and documented a scalable occupancy-pipeline design: the demo keeps
+  five slots while backend configuration, persistence, lifecycle, allocation,
+  status, and vision operate on any non-empty configured slot set.
+- Added ADR-011 to supersede the fixed-cardinality portion of ADR-008 and
+  updated the architecture summary accordingly.
 
 - Added production entry, exit, and parking-status contracts shared by hardware
   and simulated clients.
@@ -70,9 +77,8 @@ Milestone 3 (parking lifecycle API) is complete, merged, and verified on
 
 ## Next Task
 
-Begin Milestone 4 with five configurable ROIs, deterministic heuristic
-occupancy classification, temporal smoothing, and camera update integration
-tests.
+Review the Milestone 4 design, then create and execute its test-driven
+implementation plan.
 
 ## Blockers
 

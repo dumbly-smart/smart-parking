@@ -2,7 +2,12 @@
 
 ## Purpose
 
-This repository will implement a five-slot smart parking prototype that combines ESP32 hardware, camera-based occupancy detection, predictive models, and multi-objective slot allocation. The system must also run end to end without physical hardware so development and demonstrations remain repeatable.
+This repository will implement a smart parking system whose initial physical
+prototype has five slots. Slot cardinality is configuration-driven in the
+backend so other deployments can operate on any non-empty slot set. The system
+combines ESP32 hardware, camera-based occupancy detection, predictive models,
+and multi-objective slot allocation, and must run end to end without physical
+hardware so development and demonstrations remain repeatable.
 
 The detailed product and implementation requirements are in [`2026-09-03-smart-parking-design.md`](2026-09-03-smart-parking-design.md). This document is the concise architectural reference.
 
@@ -48,7 +53,7 @@ The laptop/server is the system coordinator. The embedded devices collect input 
 
 ### Occupancy service
 
-- Crops five configurable Regions of Interest from each frame.
+- Crops one configurable Region of Interest per configured slot from each frame.
 - Supports a deterministic image heuristic and an optional Keras CNN.
 - Applies confidence thresholds and temporal smoothing.
 - Persists only accepted state changes; a single failed or uncertain frame does not flip state.
@@ -69,7 +74,11 @@ The laptop/server is the system coordinator. The embedded devices collect input 
 
 ### Persistence
 
-SQLite is the initial system of record. The planned tables are `parking_slots`, `occupancy_events`, `vehicles`, `parking_sessions`, `context_samples`, `allocations`, `optimizer_runs`, and `prediction_runs`. Database initialization seeds exactly five slots and their walking-distance and zone metadata.
+SQLite is the initial system of record. The planned tables are `parking_slots`,
+`occupancy_events`, `vehicles`, `parking_sessions`, `context_samples`,
+`allocations`, `optimizer_runs`, and `prediction_runs`. Database initialization
+seeds the configured slots and their walking-distance and zone metadata; the
+committed demo configuration contains five.
 
 ## Primary Data Flows
 
@@ -117,7 +126,7 @@ Request and response schemas must be defined explicitly and shared by the API an
 
 - Environment variables select hardware or demo mode and hold network/runtime settings.
 - `config/parking.yaml` owns slot metadata, optimizer weights, timing, and thresholds.
-- `config/rois.example.json` documents the five camera regions; a local calibrated ROI file is not committed.
+- `config/rois.example.json` documents one camera region per demo slot; a local calibrated ROI file is not committed.
 - The backend initially runs as one process on a laptop/server with SQLite stored on a persistent local volume.
 - Firmware contains no backend secrets and receives the backend URL and Wi-Fi credentials through local configuration.
 
@@ -146,7 +155,7 @@ docs/          detailed specifications and future implementation plans
 
 ## Architectural Constraints
 
-- Version 1 supports exactly five parking slots.
+- Version 1 ships a five-slot prototype while backend slot cardinality remains configuration-driven.
 - Heavy vision and prediction inference does not run on either ESP32.
 - The dashboard uses server-rendered/static HTML, CSS, and JavaScript without a frontend framework.
 - Hardware integration must be enabled through configuration, not source changes.
