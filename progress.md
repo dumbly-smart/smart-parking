@@ -4,9 +4,8 @@ Last updated: 2026-09-04
 
 ## Current Status
 
-Milestone 4 (scalable vision occupancy pipeline) is in design on `main`.
-Milestone 3 remains complete and verified through implementation commit
-`36f142a`.
+Milestone 4 (scalable vision occupancy pipeline) is complete and verified on
+`main`; implementation changes run through commit `88275f0`.
 
 ## Milestones
 
@@ -20,13 +19,30 @@ Milestone 3 remains complete and verified through implementation commit
 | Python/backend foundation | Complete | 6 tests pass; lint passes; health smoke reports five slots |
 | Optimizer comparison | Complete | 20 focused tests; shared scenario API atomically persists GA/PSO/ACO metrics |
 | Parking lifecycle API | Complete | 23 focused and 49 full tests pass; RFID lifecycle is atomic and retry-safe |
-| Vision occupancy pipeline | In progress | Configurable ROIs, heuristic mode, smoothing, scalable slot cardinality, and tests work |
+| Vision occupancy pipeline | Complete | 22 focused and 90 full tests pass; dynamic slots, ROI heuristic, smoothing, persistence, and JPEG API work |
 | Prediction comparison | Not started | Shared split evaluates LSTM, GRU, and Transformer with required metrics |
 | Dashboard | Not started | Live five-slot state and both comparison tables are visible |
 | Firmware integration | Not started | Both sketches build and complete the documented hardware flow |
 | End-to-end demo | Not started | Seed, simulated camera, RFID entry, allocation, prediction, and UI run without hardware |
 
 ## Completed This Session
+
+- Removed fixed-five constraints from configuration, schemas, allocation,
+  lifecycle, status, health, and SQLite persistence while keeping the committed
+  five-slot demo configuration.
+- Added data-preserving migrations for legacy slot IDs and context occupancy
+  counts, including safe order-independent slot-name reseeding.
+- Added configurable ROI models and deterministic JPEG edge-density detection
+  with typed validation for empty, oversized, malformed, and out-of-bounds
+  inputs.
+- Added per-slot confidence filtering and temporal smoothing with atomic event
+  persistence, active-session protection, rollback safety, and lifecycle-race
+  reconciliation.
+- Added `POST /api/camera/occupancy` with dynamic ordered results and complete
+  hardware-independent multipart integration coverage.
+- Verified 22 focused occupancy tests and 90 full tests; Ruff and
+  `git diff --check` pass. The two warnings remain pre-existing dependency
+  deprecations from FastAPI/Starlette test-client integration.
 
 - Approved and documented a scalable occupancy-pipeline design: the demo keeps
   five slots while backend configuration, persistence, lifecycle, allocation,
@@ -79,8 +95,8 @@ Milestone 3 remains complete and verified through implementation commit
 
 ## Next Task
 
-Execute the approved Milestone 4 implementation plan, beginning with dynamic
-slot contracts and their failing tests.
+Begin the prediction comparison milestone with shared preprocessing and one
+deterministic train/validation/test split for every predictor.
 
 ## Blockers
 
