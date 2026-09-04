@@ -21,7 +21,7 @@ class ObjectiveBreakdown(BaseModel):
 
 
 class SlotCandidate(ObjectiveBreakdown):
-    slot_id: int = Field(ge=1, le=5)
+    slot_id: int = Field(ge=1)
     occupied: bool
 
 
@@ -39,18 +39,19 @@ class AllocationRequest(BaseModel):
     def validate_candidates(
         cls, candidates: tuple[SlotCandidate, ...]
     ) -> tuple[SlotCandidate, ...]:
-        if len(candidates) != 5:
-            raise ValueError("exactly five slot candidates are required")
-        if {candidate.slot_id for candidate in candidates} != {1, 2, 3, 4, 5}:
-            raise ValueError("candidate slot ids must be exactly 1 through 5")
+        if not candidates:
+            raise ValueError("at least one slot candidate is required")
+        if len({candidate.slot_id for candidate in candidates}) != len(candidates):
+            raise ValueError("candidate slot ids must be unique")
         return candidates
+
 
 class AllocationResult(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     algorithm: str
     scenario_id: str
-    chosen_slot_id: int = Field(ge=1, le=5)
+    chosen_slot_id: int = Field(ge=1)
     best_cost: float = Field(ge=0, le=1)
     iterations: int = Field(ge=1)
     runtime_ms: float = Field(ge=0)

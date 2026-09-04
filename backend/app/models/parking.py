@@ -27,7 +27,7 @@ class EntryResponse(BaseModel):
 
     session_id: int
     rfid_uid: str
-    slot_id: int = Field(ge=1, le=5)
+    slot_id: int = Field(ge=1)
     slot_name: str
     optimizer: Literal["ga", "pso", "aco"]
     allocation_cost: float = Field(ge=0, le=1)
@@ -40,7 +40,7 @@ class ExitResponse(BaseModel):
 
     session_id: int
     rfid_uid: str
-    slot_id: int = Field(ge=1, le=5)
+    slot_id: int = Field(ge=1)
     slot_name: str
     exited_at: str
     gate_action: Literal["open"] = "open"
@@ -49,7 +49,7 @@ class ExitResponse(BaseModel):
 class ParkingSlotStatus(BaseModel):
     model_config = ConfigDict(frozen=True)
 
-    id: int = Field(ge=1, le=5)
+    id: int = Field(ge=1)
     name: str
     walking_distance: float = Field(ge=0, le=1)
     zone: str
@@ -65,16 +65,18 @@ class ParkingStatusResponse(BaseModel):
     slots: tuple[ParkingSlotStatus, ...]
 
     @model_validator(mode="after")
-    def exactly_five_ordered_slots(self) -> ParkingStatusResponse:
-        if tuple(slot.id for slot in self.slots) != (1, 2, 3, 4, 5):
-            raise ValueError("parking status requires ordered slot ids 1 through 5")
+    def non_empty_unique_slots(self) -> ParkingStatusResponse:
+        if not self.slots:
+            raise ValueError("parking status requires at least one slot")
+        if len({slot.id for slot in self.slots}) != len(self.slots):
+            raise ValueError("parking status slot ids must be unique")
         return self
 
 
 class ParkingSlotRecord(BaseModel):
     model_config = ConfigDict(frozen=True)
 
-    id: int = Field(ge=1, le=5)
+    id: int = Field(ge=1)
     name: str
     walking_distance: float = Field(ge=0, le=1)
     zone: str

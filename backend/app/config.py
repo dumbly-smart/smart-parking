@@ -28,7 +28,7 @@ class AllocationConfig(BaseModel):
 
 
 class SlotConfig(BaseModel):
-    id: int = Field(ge=1, le=5)
+    id: int = Field(ge=1)
     name: str = Field(min_length=1, max_length=32)
     walking_distance: float = Field(ge=0, le=1)
     zone: str = Field(min_length=1, max_length=32)
@@ -40,11 +40,13 @@ class ParkingConfig(BaseModel):
 
     @field_validator("slots")
     @classmethod
-    def exactly_five_unique_slots(cls, slots: list[SlotConfig]) -> list[SlotConfig]:
-        if len(slots) != 5:
-            raise ValueError("exactly five parking slots are required")
-        if len({slot.id for slot in slots}) != 5 or len({slot.name for slot in slots}) != 5:
-            raise ValueError("parking slot ids and names must be unique")
+    def non_empty_unique_slots(cls, slots: list[SlotConfig]) -> list[SlotConfig]:
+        if not slots:
+            raise ValueError("at least one parking slot is required")
+        if len({slot.id for slot in slots}) != len(slots):
+            raise ValueError("parking slot ids must be unique")
+        if len({slot.name for slot in slots}) != len(slots):
+            raise ValueError("parking slot names must be unique")
         return slots
 
 

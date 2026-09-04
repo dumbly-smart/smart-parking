@@ -44,7 +44,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def health(request: Request) -> HealthResponse:
         count = request.app.state.database.slot_count()
         return HealthResponse(
-            status="ok" if count == 5 else "degraded",
+            status="ok" if count == len(request.app.state.settings.parking.slots) else "degraded",
             mode=request.app.state.settings.mode,
             database="ok",
             slot_count=count,

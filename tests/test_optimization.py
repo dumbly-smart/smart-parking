@@ -15,6 +15,7 @@ from optimization.fitness import weighted_cost
 from optimization.ga import GeneticAlgorithmOptimizer
 from optimization.models import (
     AllocationRequest,
+    AllocationResult,
     NoAvailableSlotError,
     PersistedOptimizerRun,
     SlotCandidate,
@@ -76,6 +77,17 @@ def request(all_occupied: bool = False) -> AllocationRequest:
     )
 
 
+def candidate(slot_id: int) -> SlotCandidate:
+    return SlotCandidate(
+        slot_id=slot_id,
+        occupied=False,
+        distance=0.2,
+        congestion=0.2,
+        waiting=0.2,
+        fairness=0.2,
+    )
+
+
 def test_weighted_cost_uses_normalized_objectives_and_default_weights() -> None:
     candidate = SlotCandidate(
         slot_id=1,
@@ -113,15 +125,45 @@ def test_candidate_rejects_non_normalized_objectives(field: str) -> None:
         SlotCandidate.model_validate(values)
 
 
-@pytest.mark.parametrize(
-    "invalid_candidates",
-    [candidates()[:4], [*candidates()[:4], candidates()[3]]],
-)
-def test_request_rejects_missing_or_duplicate_slot_ids(
-    invalid_candidates: list[SlotCandidate],
+def test_allocation_request_accepts_dynamic_non_contiguous_candidates() -> None:
+    allocation_request = AllocationRequest(
+        scenario_id="dynamic",
+        candidates=[candidate(2), candidate(9), candidate(21)],
+    )
+
+    assert isinstance(allocation_request.candidates, tuple)
+    assert [item.slot_id for item in allocation_request.candidates] == [2, 9, 21]
+
+
+@pytest.mark.parametrize("slot_ids", [[], [1, 1], [0]])
+def test_allocation_request_rejects_empty_duplicate_or_non_positive_slot_ids(
+    slot_ids: list[int],
 ) -> None:
     with pytest.raises(ValidationError):
-        AllocationRequest(scenario_id="invalid", candidates=invalid_candidates)
+        AllocationRequest(
+            scenario_id="invalid",
+            candidates=[candidate(slot_id) for slot_id in slot_ids],
+        )
+
+
+def test_allocation_result_accepts_any_positive_slot_id() -> None:
+    result = AllocationResult(
+        algorithm="ga",
+        scenario_id="dynamic",
+        chosen_slot_id=21,
+        best_cost=0.2,
+        iterations=1,
+        runtime_ms=0.0,
+        objective_breakdown={
+            "distance": 0.2,
+            "congestion": 0.2,
+            "waiting": 0.2,
+            "fairness": 0.2,
+        },
+        seed=42,
+    )
+
+    assert result.chosen_slot_id == 21
 
 
 def test_allocation_request_is_deeply_immutable() -> None:

@@ -12,7 +12,14 @@ from pydantic import ValidationError
 from backend.app.config import Settings
 from backend.app.db import Database
 from backend.app.main import create_app
-from backend.app.models.parking import VehicleOperationRequest
+from backend.app.models.parking import (
+    EntryResponse,
+    ExitResponse,
+    ParkingSlotRecord,
+    ParkingSlotStatus,
+    ParkingStatusResponse,
+    VehicleOperationRequest,
+)
 
 LEGACY_PARKING_SESSIONS_SCHEMA = """
 PRAGMA foreign_keys = ON;
@@ -354,7 +361,64 @@ def test_exit_key_cannot_be_reused_for_another_vehicle(tmp_path: Path) -> None:
     assert response.json()["detail"]["code"] == "idempotency_conflict"
 
 
-def test_status_returns_five_ordered_slots_with_active_session(tmp_path: Path) -> None:
+def parking_slot_status(slot_id: int) -> ParkingSlotStatus:
+    return ParkingSlotStatus(
+        id=slot_id,
+        name=f"S{slot_id}",
+        walking_distance=0.5,
+        zone="north",
+        occupied=False,
+        updated_at="2026-09-04T00:00:00Z",
+    )
+
+
+def test_parking_status_response_accepts_non_contiguous_slot_ids_in_order() -> None:
+    response = ParkingStatusResponse(
+        slots=(parking_slot_status(2), parking_slot_status(9), parking_slot_status(21))
+    )
+
+    assert isinstance(response.slots, tuple)
+    assert [slot.id for slot in response.slots] == [2, 9, 21]
+
+
+@pytest.mark.parametrize("slot_ids", [[], [2, 2], [0]])
+def test_parking_status_response_rejects_empty_duplicate_or_non_positive_slot_ids(
+    slot_ids: list[int],
+) -> None:
+    with pytest.raises(ValidationError):
+        ParkingStatusResponse(slots=tuple(parking_slot_status(slot_id) for slot_id in slot_ids))
+
+
+def test_parking_response_models_accept_any_positive_slot_id() -> None:
+    entry = EntryResponse(
+        session_id=1,
+        rfid_uid="CARD-1",
+        slot_id=21,
+        slot_name="S21",
+        optimizer="ga",
+        allocation_cost=0.2,
+        entered_at="2026-09-04T00:00:00Z",
+    )
+    exit_response = ExitResponse(
+        session_id=1,
+        rfid_uid="CARD-1",
+        slot_id=21,
+        slot_name="S21",
+        exited_at="2026-09-04T00:00:00Z",
+    )
+    record = ParkingSlotRecord(
+        id=21,
+        name="S21",
+        walking_distance=0.5,
+        zone="north",
+        occupied=False,
+        updated_at="2026-09-04T00:00:00Z",
+    )
+
+    assert (entry.slot_id, exit_response.slot_id, record.id) == (21, 21, 21)
+
+
+def test_status_returns_configured_slots_with_active_session(tmp_path: Path) -> None:
     settings = make_settings(tmp_path)
     with TestClient(create_app(settings)) as client:
         entry = client.post(
@@ -365,7 +429,7 @@ def test_status_returns_five_ordered_slots_with_active_session(tmp_path: Path) -
 
     assert response.status_code == 200
     slots = response.json()["slots"]
-    assert [slot["id"] for slot in slots] == [1, 2, 3, 4, 5]
+    assert [slot["id"] for slot in slots] == [slot.id for slot in settings.parking.slots]
     active = next(slot for slot in slots if slot["id"] == entry["slot_id"])
     assert active["occupied"] is True
     assert active["active_session_id"] == entry["session_id"]
