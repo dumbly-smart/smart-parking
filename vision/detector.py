@@ -48,7 +48,7 @@ class HeuristicDetector:
             return image
         except VisionInputError:
             raise
-        except (OSError, SyntaxError, UnidentifiedImageError) as exc:
+        except (Image.DecompressionBombError, OSError, SyntaxError, UnidentifiedImageError) as exc:
             raise VisionInputError("invalid_image", "image payload must be a valid JPEG") from exc
 
     def _validate_roi_bounds(self, image: Image.Image) -> None:

@@ -141,6 +141,16 @@ def test_detector_rejects_valid_non_jpeg_image() -> None:
     assert error.value.code == "invalid_image"
 
 
+def test_detector_rejects_decompression_bomb_image(monkeypatch: pytest.MonkeyPatch) -> None:
+    payload = jpeg_bytes(Image.new("L", (10, 10)))
+    monkeypatch.setattr(Image, "MAX_IMAGE_PIXELS", 1)
+
+    with pytest.raises(VisionInputError, match="JPEG") as error:
+        detector_for_slots([1]).detect(payload)
+
+    assert error.value.code == "invalid_image"
+
+
 def test_detector_rejects_empty_payload() -> None:
     with pytest.raises(VisionInputError, match="empty") as error:
         detector_for_slots([1]).detect(b"")
