@@ -216,6 +216,20 @@ class PreparedDataset:
             raise PredictionDataError(
                 "invalid_dataset", "dataset time boundaries must be chronological"
             )
+        partition_bounds = (
+            (self.train, self.source_started_at, self.train_ended_at, True),
+            (self.validation, self.train_ended_at, self.validation_ended_at, False),
+            (self.test, self.validation_ended_at, self.source_ended_at, False),
+        )
+        for split, lower, upper, include_lower in partition_bounds:
+            if any(
+                timestamp < lower or timestamp > upper or (not include_lower and timestamp == lower)
+                for timestamp in split.target_timestamps
+            ):
+                raise PredictionDataError(
+                    "invalid_dataset",
+                    "split target timestamps must remain within their partition boundary",
+                )
         if any(np.any((split.targets < 0) | (split.targets > 1)) for split in splits):
             raise PredictionDataError(
                 "invalid_dataset", "targets must be in the inclusive range [0, 1]"
@@ -227,6 +241,15 @@ class PreparedDataset:
         if any(index < 0 or index >= len(FEATURE_NAMES) for index in self.scaler.feature_indices):
             raise PredictionDataError(
                 "invalid_dataset", "scaler feature index is outside the feature contract"
+            )
+        continuous_indices = {FEATURE_NAMES.index(name) for name in CONTINUOUS_FEATURE_NAMES}
+        if (
+            len(self.scaler.feature_indices) != len(continuous_indices)
+            or set(self.scaler.feature_indices) != continuous_indices
+        ):
+            raise PredictionDataError(
+                "invalid_dataset",
+                "scaler feature indices must exactly match continuous features",
             )
         if not all(
             np.isfinite(value) for value in (*self.scaler.means, *self.scaler.scales)
