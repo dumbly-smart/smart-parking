@@ -173,3 +173,55 @@ Semantic results are reproducible while runtime remains a measured value.
 Malformed scenarios fail validation and full capacity produces a structured
 409 response. Algorithm implementations may evolve independently only behind
 this contract.
+
+## ADR-009: Persistent lifecycle idempotency and reserved transactions
+
+- Date: 2026-09-04
+- Status: Accepted
+
+### Context
+
+RFID clients can retry after network timeouts, concurrent entries can observe
+the same free-slot state, and a gate command must never describe a lifecycle
+change that failed to persist.
+
+### Decision
+
+Require every entry and exit request to carry an idempotency key. Entry and exit
+keys share one database-backed namespace and identify one operation type and
+RFID UID across server restarts. Reserve SQLite lifecycle writes with
+`BEGIN IMMEDIATE`, persist all related state in one transaction, and return a
+successful open-gate response only after commit.
+
+### Consequences
+
+Identical retries replay their original stored response without duplicate
+sessions or allocations. Conflicting key reuse has a stable HTTP 409 response,
+and concurrent entries cannot allocate from the same stale snapshot. Clients
+must generate and retain distinct keys for each intended entry and exit.
+
+## ADR-010: Immutable lifecycle replay snapshots and unsigned seeds
+
+- Date: 2026-09-04
+- Status: Accepted
+
+### Context
+
+Idempotent replies must remain stable when configured slot names change.
+Lifecycle seed derivation also uses the unsigned first eight bytes of a SHA-256
+digest, which can exceed SQLite's signed 64-bit integer range.
+
+### Decision
+
+Store the entry-time and exit-time slot names on each parking session and use
+those snapshots for replay responses. Store optimizer seeds as hexadecimal text
+while exposing them as integers through typed Python and HTTP contracts. Bound
+lifecycle scenario identifiers to `entry:` followed by the SHA-256 hex digest
+of the idempotency key.
+
+### Consequences
+
+Configuration changes do not alter prior successful responses, all unsigned
+64-bit seeds round-trip without precision loss, and maximum-length valid keys
+cannot overflow the optimizer scenario contract. Existing integer seed rows
+remain readable.

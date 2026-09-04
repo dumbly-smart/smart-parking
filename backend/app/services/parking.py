@@ -59,10 +59,11 @@ class ParkingService:
             for slot in slots
         )
         identity = f"{request.rfid_uid}:{request.idempotency_key}".encode()
-        seed = int.from_bytes(hashlib.sha256(identity).digest()[:8], "big", signed=True)
+        seed = int.from_bytes(hashlib.sha256(identity).digest()[:8], "big")
+        scenario_id = f"entry:{hashlib.sha256(request.idempotency_key.encode()).hexdigest()}"
         return self.optimizer.optimize(
             AllocationRequest(
-                scenario_id=f"entry:{request.idempotency_key}",
+                scenario_id=scenario_id,
                 candidates=candidates,
                 weights=self.weights,
                 seed=seed,

@@ -42,6 +42,8 @@ CREATE TABLE IF NOT EXISTS parking_sessions (
     slot_id INTEGER NOT NULL REFERENCES parking_slots(id),
     entry_idempotency_key TEXT NOT NULL UNIQUE,
     exit_idempotency_key TEXT,
+    entry_slot_name TEXT,
+    exit_slot_name TEXT,
     entered_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
     exited_at TEXT,
     CHECK (exited_at IS NULL OR exited_at >= entered_at)
@@ -78,7 +80,7 @@ CREATE TABLE IF NOT EXISTS optimizer_runs (
     iterations INTEGER NOT NULL,
     runtime_ms REAL NOT NULL,
     objective_breakdown TEXT NOT NULL,
-    seed INTEGER NOT NULL,
+    seed TEXT NOT NULL,
     created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
 
@@ -133,10 +135,15 @@ class Database:
                 row["name"]
                 for row in connection.execute("PRAGMA table_info(parking_sessions)")
             }
-            if "exit_idempotency_key" not in session_columns:
-                connection.execute(
-                    "ALTER TABLE parking_sessions ADD COLUMN exit_idempotency_key TEXT"
-                )
+            for column in (
+                "exit_idempotency_key",
+                "entry_slot_name",
+                "exit_slot_name",
+            ):
+                if column not in session_columns:
+                    connection.execute(
+                        f"ALTER TABLE parking_sessions ADD COLUMN {column} TEXT"
+                    )
             connection.execute(
                 """
                 CREATE UNIQUE INDEX IF NOT EXISTS unique_exit_idempotency_key
@@ -172,7 +179,8 @@ class Database:
             replay = connection.execute(
                 """
                 SELECT ps.id AS session_id, v.rfid_uid, ps.slot_id,
-                       s.name AS slot_name, r.algorithm AS optimizer,
+                       COALESCE(ps.entry_slot_name, s.name) AS slot_name,
+                       r.algorithm AS optimizer,
                        r.best_cost AS allocation_cost, ps.entered_at
                 FROM parking_sessions AS ps
                 JOIN vehicles AS v ON v.id = ps.vehicle_id
@@ -228,6 +236,7 @@ class Database:
             ).fetchall()
             slots = tuple(ParkingSlotRecord.model_validate(dict(row)) for row in slot_rows)
             result = allocate(slots)
+            slot_name = next(slot.name for slot in slots if slot.id == result.chosen_slot_id)
 
             optimizer_cursor = connection.execute(
                 """
@@ -244,16 +253,16 @@ class Database:
                     result.iterations,
                     result.runtime_ms,
                     json.dumps(result.objective_breakdown.model_dump(), sort_keys=True),
-                    result.seed,
+                    self._encode_seed(result.seed),
                 ),
             )
             session_cursor = connection.execute(
                 """
                 INSERT INTO parking_sessions (
-                    vehicle_id, slot_id, entry_idempotency_key
-                ) VALUES (?, ?, ?)
+                    vehicle_id, slot_id, entry_idempotency_key, entry_slot_name
+                ) VALUES (?, ?, ?, ?)
                 """,
-                (vehicle["id"], result.chosen_slot_id, idempotency_key),
+                (vehicle["id"], result.chosen_slot_id, idempotency_key, slot_name),
             )
             session_id = int(session_cursor.lastrowid)
             connection.execute(
@@ -284,19 +293,14 @@ class Database:
                     "selected parking slot is no longer available",
                 )
             stored = connection.execute(
-                """
-                SELECT ps.entered_at, s.name AS slot_name
-                FROM parking_sessions AS ps
-                JOIN parking_slots AS s ON s.id = ps.slot_id
-                WHERE ps.id = ?
-                """,
+                "SELECT entered_at FROM parking_sessions WHERE id = ?",
                 (session_id,),
             ).fetchone()
             response = EntryResponse(
                 session_id=session_id,
                 rfid_uid=rfid_uid,
                 slot_id=result.chosen_slot_id,
-                slot_name=stored["slot_name"],
+                slot_name=slot_name,
                 optimizer=result.algorithm,
                 allocation_cost=result.best_cost,
                 entered_at=stored["entered_at"],
@@ -319,7 +323,8 @@ class Database:
             replay = connection.execute(
                 """
                 SELECT ps.id AS session_id, v.rfid_uid, ps.slot_id,
-                       s.name AS slot_name, ps.exited_at
+                       COALESCE(ps.exit_slot_name, s.name) AS slot_name,
+                       ps.exited_at
                 FROM parking_sessions AS ps
                 JOIN vehicles AS v ON v.id = ps.vehicle_id
                 JOIN parking_slots AS s ON s.id = ps.slot_id
@@ -357,10 +362,15 @@ class Database:
             connection.execute(
                 """
                 UPDATE parking_sessions
-                SET exited_at = ?, exit_idempotency_key = ?
+                SET exited_at = ?, exit_idempotency_key = ?, exit_slot_name = ?
                 WHERE id = ? AND exited_at IS NULL
                 """,
-                (exited_at, idempotency_key, active["session_id"]),
+                (
+                    exited_at,
+                    idempotency_key,
+                    active["slot_name"],
+                    active["session_id"],
+                ),
             )
             connection.execute(
                 """
@@ -412,7 +422,7 @@ class Database:
                         result.iterations,
                         result.runtime_ms,
                         json.dumps(result.objective_breakdown.model_dump(), sort_keys=True),
-                        result.seed,
+                        self._encode_seed(result.seed),
                     )
                     for result in results
                 ],
@@ -432,7 +442,18 @@ class Database:
                 {
                     **dict(row),
                     "objective_breakdown": json.loads(row["objective_breakdown"]),
+                    "seed": self._decode_seed(row["seed"]),
                 }
             )
             for row in rows
         ]
+
+    @staticmethod
+    def _encode_seed(seed: int) -> str:
+        return f"0x{seed:x}"
+
+    @staticmethod
+    def _decode_seed(value: str | int | float) -> int:
+        if isinstance(value, str) and value.startswith("0x"):
+            return int(value, 16)
+        return int(value)

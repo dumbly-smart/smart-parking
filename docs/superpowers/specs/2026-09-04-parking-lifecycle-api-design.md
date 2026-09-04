@@ -86,7 +86,8 @@ last-update timestamp, and nullable active session ID and RFID UID.
 6. Invoke the optimizer selected by `Settings.selected_optimizer` using the
    configured objective weights. Derive its deterministic integer seed from
    the first eight bytes of SHA-256 over the normalized RFID UID, a colon, and
-   the idempotency key.
+   the idempotency key, interpreted as an unsigned value. Use `entry:` plus the
+   SHA-256 hex digest of the idempotency key as the bounded scenario ID.
 7. Persist the optimizer run, parking session, allocation, and occupied slot
    update in the same transaction.
 8. Commit before returning the successful response.
@@ -104,8 +105,10 @@ If every slot is occupied, allocation fails and the transaction rolls back.
 6. Commit before returning the successful response.
 
 SQLite initialization adds a nullable `exit_idempotency_key` column to
-`parking_sessions` and creates a unique partial index for populated values.
-Initialization detects and migrates existing version-1 databases idempotently.
+`parking_sessions`, entry-time and exit-time slot-name snapshots, and a unique
+partial index for populated exit keys. Optimizer seeds use hexadecimal text in
+SQLite so unsigned 64-bit values round-trip exactly. Initialization detects and
+migrates existing version-1 databases idempotently.
 
 ## Idempotency Rules
 
@@ -180,6 +183,9 @@ Coverage includes:
 - full capacity returns `no_available_slot` without partial writes;
 - pre-occupied slots are never selected;
 - concurrent entry transactions cannot assign the same slot;
+- valid idempotency keys through 128 characters produce bounded scenario IDs;
+- unsigned lifecycle seeds round-trip through persistence and the API;
+- entry and exit replay payloads survive slot-name configuration changes;
 - parking status returns five correctly ordered slots with active-session
   details; and
 - an injected persistence failure rolls back the complete lifecycle change.

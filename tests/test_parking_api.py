@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import sqlite3
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -27,21 +28,24 @@ CREATE TABLE parking_sessions (
 """
 
 
-def write_config(path: Path) -> None:
-    path.write_text(
-        """allocation:
+def write_config(path: Path, name_prefix: str = "S") -> None:
+    config = """allocation:
   weights:
     distance: 0.35
     congestion: 0.30
     waiting: 0.20
     fairness: 0.15
 slots:
-  - {id: 1, name: S1, walking_distance: 0.2, zone: north}
-  - {id: 2, name: S2, walking_distance: 0.3, zone: north}
-  - {id: 3, name: S3, walking_distance: 0.5, zone: central}
-  - {id: 4, name: S4, walking_distance: 0.7, zone: south}
-  - {id: 5, name: S5, walking_distance: 0.9, zone: south}
-""",
+  - {id: 1, name: NAME1, walking_distance: 0.2, zone: north}
+  - {id: 2, name: NAME2, walking_distance: 0.3, zone: north}
+  - {id: 3, name: NAME3, walking_distance: 0.5, zone: central}
+  - {id: 4, name: NAME4, walking_distance: 0.7, zone: south}
+  - {id: 5, name: NAME5, walking_distance: 0.9, zone: south}
+"""
+    for slot_id in range(1, 6):
+        config = config.replace(f"NAME{slot_id}", f"{name_prefix}{slot_id}")
+    path.write_text(
+        config,
         encoding="utf-8",
     )
 
@@ -91,7 +95,11 @@ def test_initialize_migrates_exit_idempotency_column(tmp_path: Path) -> None:
         indexes = {
             row[1] for row in connection.execute("PRAGMA index_list(parking_sessions)")
         }
-    assert "exit_idempotency_key" in columns
+    assert {
+        "exit_idempotency_key",
+        "entry_slot_name",
+        "exit_slot_name",
+    } <= columns
     assert "unique_exit_idempotency_key" in indexes
 
 
@@ -388,3 +396,70 @@ def test_concurrent_entries_receive_different_slots(tmp_path: Path) -> None:
             "SELECT COUNT(*) FROM parking_sessions WHERE exited_at IS NULL"
         ).fetchone()[0]
     assert active_count == 2
+
+
+@pytest.mark.parametrize("key_length", [122, 123, 128])
+def test_maximum_length_entry_keys_have_bounded_scenario_ids(
+    tmp_path: Path, key_length: int
+) -> None:
+    settings = make_settings(tmp_path)
+    idempotency_key = "x" * key_length
+    with TestClient(create_app(settings), raise_server_exceptions=False) as client:
+        response = client.post(
+            "/api/vehicle/entry",
+            json={"rfid_uid": "CARD-1", "idempotency_key": idempotency_key},
+        )
+
+    assert response.status_code == 200
+    with sqlite3.connect(settings.database_path) as connection:
+        scenario_id = connection.execute(
+            "SELECT scenario_id FROM optimizer_runs"
+        ).fetchone()[0]
+    assert scenario_id == f"entry:{hashlib.sha256(idempotency_key.encode()).hexdigest()}"
+
+
+def test_lifecycle_seed_uses_unsigned_sha256_prefix(tmp_path: Path) -> None:
+    settings = make_settings(tmp_path)
+    idempotency_key = "vector-1"
+    expected_seed = int.from_bytes(
+        hashlib.sha256(f"CARD-1:{idempotency_key}".encode()).digest()[:8], "big"
+    )
+    with TestClient(create_app(settings)) as client:
+        client.post(
+            "/api/vehicle/entry",
+            json={"rfid_uid": "CARD-1", "idempotency_key": idempotency_key},
+        )
+        response = client.get("/api/benchmarks/optimizers")
+
+    assert response.json()["runs"][0]["seed"] == expected_seed
+
+
+def test_replays_preserve_slot_name_after_configuration_change(tmp_path: Path) -> None:
+    settings = make_settings(tmp_path)
+    with TestClient(create_app(settings)) as client:
+        entered = client.post(
+            "/api/vehicle/entry",
+            json={"rfid_uid": "CARD-1", "idempotency_key": "entry-1"},
+        )
+        exited = client.post(
+            "/api/vehicle/exit",
+            json={"rfid_uid": "CARD-1", "idempotency_key": "exit-1"},
+        )
+
+    write_config(settings.parking_config_path, name_prefix="RENAMED-")
+    restarted = Settings(
+        database_url=settings.database_url,
+        parking_config_path=settings.parking_config_path,
+    )
+    with TestClient(create_app(restarted)) as client:
+        entry_replay = client.post(
+            "/api/vehicle/entry",
+            json={"rfid_uid": "CARD-1", "idempotency_key": "entry-1"},
+        )
+        exit_replay = client.post(
+            "/api/vehicle/exit",
+            json={"rfid_uid": "CARD-1", "idempotency_key": "exit-1"},
+        )
+
+    assert entry_replay.json() == entered.json()
+    assert exit_replay.json() == exited.json()

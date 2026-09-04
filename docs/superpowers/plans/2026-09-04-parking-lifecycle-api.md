@@ -23,6 +23,7 @@
 - Occupied slots are never assignable.
 - Entry and exit use `BEGIN IMMEDIATE` and return an open-gate action only after commit.
 - Stored timestamps are timezone-aware UTC strings.
+- Lifecycle seeds are unsigned SHA-256 prefixes stored losslessly as hexadecimal text.
 - Camera, prediction, dashboard, and firmware changes are out of scope.
 
 ---
@@ -38,7 +39,7 @@
 **Interfaces:**
 - Consumes: `Database.initialize(slots: Sequence[SlotConfig]) -> None`
 - Produces: `VehicleOperationRequest`, `EntryResponse`, `ExitResponse`, `ParkingSlotStatus`, `ParkingStatusResponse`, `ParkingSlotRecord`, and `ParkingConflict`
-- Produces: nullable `parking_sessions.exit_idempotency_key` plus unique partial index `unique_exit_idempotency_key`
+- Produces: nullable `parking_sessions.exit_idempotency_key`, `entry_slot_name`, and `exit_slot_name` plus unique partial index `unique_exit_idempotency_key`
 
 - [ ] **Step 1: Write failing schema and migration tests**
 
@@ -129,10 +130,11 @@ columns = {
     row["name"]
     for row in connection.execute("PRAGMA table_info(parking_sessions)")
 }
-if "exit_idempotency_key" not in columns:
-    connection.execute(
-        "ALTER TABLE parking_sessions ADD COLUMN exit_idempotency_key TEXT"
-    )
+for column in ("exit_idempotency_key", "entry_slot_name", "exit_slot_name"):
+    if column not in columns:
+        connection.execute(
+            f"ALTER TABLE parking_sessions ADD COLUMN {column} TEXT"
+        )
 connection.execute(
     """
     CREATE UNIQUE INDEX IF NOT EXISTS unique_exit_idempotency_key
@@ -236,7 +238,7 @@ def _allocate(self, request: VehicleOperationRequest, slots: tuple[ParkingSlotRe
     )
     return self.optimizer.optimize(
         AllocationRequest(
-            scenario_id=f"entry:{request.idempotency_key}",
+            scenario_id=f"entry:{hashlib.sha256(request.idempotency_key.encode()).hexdigest()}",
             candidates=candidates,
             weights=self.weights,
             seed=_seed_for(request),
@@ -285,6 +287,9 @@ assert table_counts(settings) == counts_before_injected_trigger_failure
 Use a real SQLite trigger that aborts allocation insertion for the rollback
 case. For capacity and occupied safety, update `parking_slots` in the temporary
 database before posting.
+
+Add boundary tests for 122-, 123-, and 128-character keys, a known unsigned
+SHA-256 seed vector, and restart-based entry/exit replay after slot renaming.
 
 - [ ] **Step 6: Run the new tests and verify RED, then complete entry branches**
 
