@@ -1,7 +1,9 @@
 """Immutable contracts shared by prediction preprocessing and model trainers."""
 
+import math
 from dataclasses import dataclass
 from datetime import datetime
+from numbers import Real
 from typing import Final
 
 import numpy as np
@@ -48,6 +50,8 @@ CONTINUOUS_FEATURE_NAMES: Final = (
     "mean_fairness",
 )
 
+TARGET_NAME: Final = "next_occupancy_ratio"
+
 
 class PredictionDataError(ValueError):
     """Validation error with a stable machine-readable code."""
@@ -68,6 +72,15 @@ class PreprocessingConfig:
     max_carry_intervals: int = 3
 
     def __post_init__(self) -> None:
+        for name in (
+            "interval_minutes",
+            "lookback_steps",
+            "horizon_steps",
+            "max_carry_intervals",
+        ):
+            value = getattr(self, name)
+            if not isinstance(value, int) or isinstance(value, bool):
+                raise PredictionDataError("invalid_config", f"{name} must be an integer")
         for name, required in (
             ("interval_minutes", 5),
             ("lookback_steps", 12),
@@ -79,7 +92,12 @@ class PreprocessingConfig:
                 )
         for name in ("train_fraction", "validation_fraction"):
             value = getattr(self, name)
-            if not 0 < value < 1:
+            if (
+                not isinstance(value, Real)
+                or isinstance(value, bool)
+                or not math.isfinite(value)
+                or not 0 < value < 1
+            ):
                 raise PredictionDataError(
                     "invalid_config", f"{name} must be strictly between 0 and 1"
                 )
@@ -124,11 +142,19 @@ class PredictionSourceData:
     sessions: tuple[SessionRecord, ...]
     allocations: tuple[AllocationFeatureRecord, ...]
 
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "context_samples", tuple(self.context_samples))
+        object.__setattr__(self, "sessions", tuple(self.sessions))
+        object.__setattr__(self, "allocations", tuple(self.allocations))
+
 
 @dataclass(frozen=True)
 class FeatureBucket:
     timestamp: datetime
     values: tuple[float, ...]
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "values", tuple(self.values))
 
 
 @dataclass(frozen=True)
@@ -136,6 +162,11 @@ class ScalerMetadata:
     feature_indices: tuple[int, ...]
     means: tuple[float, ...]
     scales: tuple[float, ...]
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "feature_indices", tuple(self.feature_indices))
+        object.__setattr__(self, "means", tuple(self.means))
+        object.__setattr__(self, "scales", tuple(self.scales))
 
 
 @dataclass(frozen=True)
@@ -196,7 +227,8 @@ class PreparedDataset:
     slot_count: int
 
     def __post_init__(self) -> None:
-        if tuple(self.feature_names) != FEATURE_NAMES or self.target_name != "occupancy_ratio":
+        object.__setattr__(self, "feature_names", tuple(self.feature_names))
+        if tuple(self.feature_names) != FEATURE_NAMES or self.target_name != TARGET_NAME:
             raise PredictionDataError(
                 "invalid_dataset", "feature names or target name do not match the contract"
             )

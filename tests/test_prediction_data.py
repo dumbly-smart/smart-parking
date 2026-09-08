@@ -1,4 +1,5 @@
 import json
+import math
 import sqlite3
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
@@ -7,6 +8,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+import prediction.data as prediction_data
 from backend.app.config import SlotConfig
 from backend.app.db import Database
 from prediction.data import (
@@ -17,6 +19,7 @@ from prediction.data import (
 from prediction.models import (
     CONTINUOUS_FEATURE_NAMES,
     FEATURE_NAMES,
+    TARGET_NAME,
     AllocationFeatureRecord,
     ContextSampleRecord,
     FeatureBucket,
@@ -374,6 +377,113 @@ def test_feature_timeline_uses_half_open_session_boundaries() -> None:
     assert feature(third, "active_session_count") == 0
 
 
+def test_feature_timeline_session_sweep_preserves_events_across_gaps() -> None:
+    source = replace(
+        source_with_context_minutes((0, 5, 15, 20), slot_count=5),
+        sessions=(
+            session(
+                1,
+                vehicle_id=10,
+                entered_at="2026-09-04T09:58:00Z",
+                exited_at="2026-09-04T10:05:00Z",
+            ),
+            session(
+                2,
+                vehicle_id=20,
+                entered_at="2026-09-04T10:01:00Z",
+                exited_at="2026-09-04T10:07:00Z",
+            ),
+            session(
+                3,
+                vehicle_id=10,
+                entered_at="2026-09-04T10:06:00Z",
+                exited_at="2026-09-04T10:15:00Z",
+            ),
+            session(4, vehicle_id=30, entered_at="2026-09-04T10:09:00Z"),
+            session(
+                5,
+                vehicle_id=40,
+                entered_at="2026-09-04T10:12:00Z",
+                exited_at="2026-09-04T10:20:00Z",
+            ),
+            session(
+                6,
+                vehicle_id=40,
+                entered_at="2026-09-04T10:15:00Z",
+                exited_at="2026-09-04T10:20:00Z",
+            ),
+        ),
+    )
+
+    timeline = build_feature_timeline(
+        source, PreprocessingConfig(max_carry_intervals=0)
+    )
+
+    assert timeline[2] is None
+    expected = (
+        (1, 0, 2, 1, 0.0),
+        (2, 2, 2, 3, 0.5),
+        (1, 1, 3, 2, 1.0),
+        (0, 2, 1, 1, 0.0),
+    )
+    for bucket, values in zip(
+        (timeline[0], timeline[1], timeline[3], timeline[4]), expected, strict=True
+    ):
+        assert bucket is not None
+        assert tuple(
+            feature(bucket, name)
+            for name in (
+                "entry_count",
+                "exit_count",
+                "active_session_count",
+                "unique_vehicle_count",
+                "returning_vehicle_rate",
+            )
+        ) == values
+
+
+def test_feature_timeline_advances_session_events_monotonically(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class CountingDateTime(datetime):
+        comparisons = 0
+
+        def __lt__(self, other: object) -> bool:
+            type(self).comparisons += 1
+            return super().__lt__(other)
+
+        def __ge__(self, other: object) -> bool:
+            type(self).comparisons += 1
+            return super().__ge__(other)
+
+    original_parse = prediction_data.parse_utc_timestamp
+
+    def counted_parse(value: str, field: str) -> datetime:
+        parsed = original_parse(value, field)
+        return CountingDateTime.fromtimestamp(parsed.timestamp(), tz=UTC)
+
+    monkeypatch.setattr(prediction_data, "parse_utc_timestamp", counted_parse)
+    start = datetime(2026, 9, 4, 10, tzinfo=UTC)
+    bucket_count = 80
+    source = replace(
+        regular_prediction_source(bucket_count=bucket_count, slot_count=5),
+        sessions=tuple(
+            session(
+                index + 1,
+                vehicle_id=index,
+                entered_at=(start + timedelta(minutes=index * 5 + 1)).isoformat(),
+                exited_at=(start + timedelta(minutes=index * 5 + 4)).isoformat(),
+            )
+            for index in range(bucket_count)
+        ),
+    )
+
+    timeline = build_feature_timeline(source, PreprocessingConfig())
+
+    assert len(timeline) == bucket_count
+    assert CountingDateTime.comparisons < 2_000
+
+
 @pytest.mark.parametrize("value", ["2026-09-04T10:00:00", "not-a-timestamp"])
 def test_parse_utc_timestamp_rejects_invalid_timestamps(value: str) -> None:
     with pytest.raises(PredictionDataError) as raised:
@@ -615,6 +725,14 @@ def test_prepared_dataset_is_deterministic() -> None:
         assert first_split.target_timestamps == second_split.target_timestamps
 
 
+def test_prepared_dataset_names_the_one_step_ahead_target() -> None:
+    dataset = prepare_prediction_dataset(
+        regular_prediction_source(bucket_count=120, slot_count=8)
+    )
+
+    assert dataset.target_name == TARGET_NAME
+
+
 def test_preprocessing_config_has_approved_defaults() -> None:
     config = PreprocessingConfig()
 
@@ -648,6 +766,35 @@ def test_preprocessing_config_rejects_invalid_values(
     assert raised.value.code == code
 
 
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        *(
+            (field, value)
+            for field, required in (
+                ("interval_minutes", 5),
+                ("lookback_steps", 12),
+                ("horizon_steps", 1),
+                ("max_carry_intervals", 3),
+            )
+            for value in (float(required), True, str(required), math.nan, math.inf)
+        ),
+        *(
+            (field, value)
+            for field in ("train_fraction", "validation_fraction")
+            for value in (True, "0.15", math.nan, math.inf, -math.inf)
+        ),
+    ],
+)
+def test_preprocessing_config_rejects_malformed_types_and_non_finite_values(
+    field: str, value: object
+) -> None:
+    with pytest.raises(PredictionDataError) as raised:
+        PreprocessingConfig(**{field: value})
+
+    assert raised.value.code == "invalid_config"
+
+
 def test_prepared_split_copies_and_freezes_arrays() -> None:
     source_inputs = np.zeros((2, 12, len(FEATURE_NAMES)), dtype=np.float64)
     source_targets = np.array([0.2, 0.4], dtype=np.float64)
@@ -668,12 +815,64 @@ def test_prepared_split_copies_and_freezes_arrays() -> None:
         split.inputs[0, 0, 0] = 1
 
 
+def test_prediction_source_data_snapshots_caller_collections() -> None:
+    contexts = [
+        ContextSampleRecord(1, 0, "clear", 0, 0, "2026-09-04T10:00:00Z")
+    ]
+    sessions = [session(1, vehicle_id=7, entered_at="2026-09-04T10:00:00Z")]
+    allocations = [
+        allocation(
+            1, vehicle_id=7, created_at="2026-09-04T10:00:00Z", distance=0.25
+        )
+    ]
+    source = PredictionSourceData(5, contexts, sessions, allocations)
+
+    contexts.clear()
+    sessions.clear()
+    allocations.clear()
+
+    assert tuple(map(len, (source.context_samples, source.sessions, source.allocations))) == (
+        1,
+        1,
+        1,
+    )
+    assert all(
+        isinstance(collection, tuple)
+        for collection in (source.context_samples, source.sessions, source.allocations)
+    )
+
+
+def test_feature_bucket_snapshots_caller_values() -> None:
+    values = [0.25, 0.5]
+    bucket = FeatureBucket(datetime(2026, 9, 4, 10, tzinfo=UTC), values)
+
+    values[0] = 1.0
+
+    assert bucket.values == (0.25, 0.5)
+
+
+def test_scaler_metadata_snapshots_caller_collections() -> None:
+    indices = [0, 1]
+    means = [0.25, 0.5]
+    scales = [1.0, 2.0]
+    scaler = ScalerMetadata(indices, means, scales)
+
+    indices.clear()
+    means[0] = 99.0
+    scales.append(3.0)
+
+    assert scaler.feature_indices == (0, 1)
+    assert scaler.means == (0.25, 0.5)
+    assert scaler.scales == (1.0, 2.0)
+
+
 def _prepared_dataset(
     *,
     train_timestamps: tuple[datetime, ...] = (datetime(2026, 9, 4, 10, tzinfo=UTC),),
     validation_timestamps: tuple[datetime, ...] = (datetime(2026, 9, 4, 11, tzinfo=UTC),),
     test_timestamps: tuple[datetime, ...] = (datetime(2026, 9, 4, 12, tzinfo=UTC),),
     scaler_indices: tuple[int, ...] | None = None,
+    feature_names: tuple[str, ...] | list[str] = FEATURE_NAMES,
 ) -> PreparedDataset:
     values = np.zeros((1, 12, len(FEATURE_NAMES)), dtype=np.float64)
 
@@ -686,8 +885,8 @@ def _prepared_dataset(
         else scaler_indices
     )
     return PreparedDataset(
-        feature_names=FEATURE_NAMES,
-        target_name="occupancy_ratio",
+        feature_names=feature_names,
+        target_name=TARGET_NAME,
         train=split(train_timestamps),
         validation=split(validation_timestamps),
         test=split(test_timestamps),
@@ -700,6 +899,15 @@ def _prepared_dataset(
         config=PreprocessingConfig(),
         slot_count=10,
     )
+
+
+def test_prepared_dataset_snapshots_caller_feature_names() -> None:
+    names = list(FEATURE_NAMES)
+    dataset = _prepared_dataset(feature_names=names)
+
+    names.clear()
+
+    assert dataset.feature_names == FEATURE_NAMES
 
 
 @pytest.mark.parametrize(

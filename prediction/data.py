@@ -12,6 +12,7 @@ import numpy as np
 from prediction.models import (
     CONTINUOUS_FEATURE_NAMES,
     FEATURE_NAMES,
+    TARGET_NAME,
     WEATHER_CATEGORIES,
     AllocationFeatureRecord,
     ContextSampleRecord,
@@ -176,15 +177,6 @@ def build_feature_timeline(
         bucket = _floor_timestamp(context.sampled_at, interval_seconds)
         contexts_by_bucket[bucket] = context
 
-    entries_by_bucket: dict[datetime, list[_ParsedSession]] = {}
-    exits_by_bucket: dict[datetime, list[_ParsedSession]] = {}
-    for current_session in sessions:
-        entry_bucket = _floor_timestamp(current_session.entered_at, interval_seconds)
-        entries_by_bucket.setdefault(entry_bucket, []).append(current_session)
-        if current_session.exited_at is not None:
-            exit_bucket = _floor_timestamp(current_session.exited_at, interval_seconds)
-            exits_by_bucket.setdefault(exit_bucket, []).append(current_session)
-
     allocations_by_bucket: dict[datetime, list[_ParsedAllocation]] = {}
     for current_allocation in allocations:
         allocation_bucket = _floor_timestamp(current_allocation.created_at, interval_seconds)
@@ -199,15 +191,59 @@ def build_feature_timeline(
     absent_intervals = 0
     previous_resolved_ratio: float | None = None
     resolved_ratios_since_gap: list[float] = []
+    exit_events = tuple(
+        sorted(
+            (item for item in sessions if item.exited_at is not None),
+            key=lambda item: (cast(datetime, item.exited_at), item.record.id),
+        )
+    )
+    entry_index = 0
+    exit_index = 0
+    previously_seen_vehicles: set[int] = set()
+    active_session_ids: set[int] = set()
 
     for offset in range(bucket_count):
         timestamp = first_bucket + offset * interval
+        end = timestamp + interval
         selected_context = contexts_by_bucket.get(timestamp)
         if selected_context is not None:
             carried_context = selected_context
             absent_intervals = 0
         else:
             absent_intervals += 1
+
+        while entry_index < len(sessions) and sessions[entry_index].entered_at < timestamp:
+            previous_entry = sessions[entry_index]
+            previously_seen_vehicles.add(previous_entry.record.vehicle_id)
+            active_session_ids.add(previous_entry.record.id)
+            entry_index += 1
+        while (
+            exit_index < len(exit_events)
+            and cast(datetime, exit_events[exit_index].exited_at) < timestamp
+        ):
+            active_session_ids.discard(exit_events[exit_index].record.id)
+            exit_index += 1
+
+        bucket_entry_start = entry_index
+        while entry_index < len(sessions) and sessions[entry_index].entered_at < end:
+            active_session_ids.add(sessions[entry_index].record.id)
+            entry_index += 1
+        bucket_entries = sessions[bucket_entry_start:entry_index]
+        returning_entries = sum(
+            item.record.vehicle_id in previously_seen_vehicles for item in bucket_entries
+        )
+        previously_seen_vehicles.update(
+            item.record.vehicle_id for item in bucket_entries
+        )
+
+        bucket_exit_start = exit_index
+        while (
+            exit_index < len(exit_events)
+            and cast(datetime, exit_events[exit_index].exited_at) < end
+        ):
+            active_session_ids.discard(exit_events[exit_index].record.id)
+            exit_index += 1
+        bucket_exits = exit_events[bucket_exit_start:exit_index]
 
         if carried_context is None or absent_intervals > config.max_carry_intervals:
             timeline.append(None)
@@ -225,9 +261,6 @@ def build_feature_timeline(
         mean_15m = float(np.mean(resolved_ratios_since_gap[-3:]))
         mean_60m = float(np.mean(resolved_ratios_since_gap[-12:]))
 
-        end = timestamp + interval
-        bucket_entries = entries_by_bucket.get(timestamp, ())
-        bucket_exits = exits_by_bucket.get(timestamp, ())
         bucket_allocations = allocations_by_bucket.get(timestamp, ())
         entry_count = len(bucket_entries)
         exit_count = len(bucket_exits)
@@ -237,18 +270,8 @@ def build_feature_timeline(
                 *(item.record.vehicle_id for item in bucket_exits),
             }
         )
-        previously_seen_vehicles = {
-            item.record.vehicle_id for item in sessions if item.entered_at < timestamp
-        }
-        returning_entries = sum(
-            item.record.vehicle_id in previously_seen_vehicles for item in bucket_entries
-        )
         returning_vehicle_rate = returning_entries / entry_count if entry_count else 0.0
-        active_session_count = sum(
-            item.entered_at < end
-            and (item.exited_at is None or item.exited_at >= end)
-            for item in sessions
-        )
+        active_session_count = len(active_session_ids)
 
         allocation_count = len(bucket_allocations)
         if allocation_count:
@@ -412,7 +435,7 @@ def prepare_prediction_dataset(
     identity = {
         "config": asdict(resolved_config),
         "feature_names": FEATURE_NAMES,
-        "target_name": "next_occupancy_ratio",
+        "target_name": TARGET_NAME,
         "slot_count": source.slot_count,
         "source_started_at": source_started_at.isoformat(),
         "source_ended_at": source_ended_at.isoformat(),
@@ -424,7 +447,7 @@ def prepare_prediction_dataset(
 
     return PreparedDataset(
         feature_names=FEATURE_NAMES,
-        target_name="occupancy_ratio",
+        target_name=TARGET_NAME,
         train=PreparedSplit(train_inputs, train_targets, train_timestamps),
         validation=PreparedSplit(
             validation_inputs, validation_targets, validation_timestamps
