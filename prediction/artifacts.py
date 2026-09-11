@@ -7,13 +7,13 @@ import json
 import math
 import os
 from dataclasses import asdict, dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from numbers import Real
 from pathlib import Path
 from typing import Protocol
 from uuid import uuid4
 
-from prediction.models import PreparedDataset
+from prediction.models import FEATURE_NAMES, TARGET_NAME, PreparedDataset
 from prediction.training import (
     EvaluationMetrics,
     ModelFamily,
@@ -79,16 +79,20 @@ def _sha256_file(path: Path) -> str:
 
 def _validate_metrics(metrics: EvaluationMetrics) -> None:
     values = (metrics.mae, metrics.mse, metrics.rmse, metrics.inference_latency_ms)
-    if not all(
-        isinstance(value, Real)
-        and not isinstance(value, bool)
-        and math.isfinite(value)
-        and value >= 0
-        for value in values
-    ):
+    if not all(_is_finite_non_negative(value) for value in values):
         raise PredictionTrainingError(
             "invalid_manifest", "artifact metrics must be finite and non-negative"
         )
+
+
+def _is_finite_non_negative(value: object) -> bool:
+    if not isinstance(value, Real) or isinstance(value, bool):
+        return False
+    try:
+        normalized = float(value)
+    except (OverflowError, TypeError, ValueError):
+        return False
+    return math.isfinite(normalized) and normalized >= 0
 
 
 def _build_manifest(
@@ -219,9 +223,67 @@ def _manifest_from_payload(payload: object) -> ArtifactManifest:
         completed = datetime.fromisoformat(manifest.completed_at)
     except (TypeError, ValueError) as error:
         raise PredictionTrainingError("invalid_manifest", "completion time is invalid") from error
-    if completed.tzinfo is None or completed.utcoffset() is None:
-        raise PredictionTrainingError("invalid_manifest", "completion time must be timezone-aware")
+    if completed.tzinfo is None or completed.utcoffset() != timedelta(0):
+        raise PredictionTrainingError("invalid_manifest", "completion time must be UTC")
+    _validate_manifest_contract(manifest)
     return manifest
+
+
+def _validate_manifest_contract(manifest: ArtifactManifest) -> None:
+    hexadecimal = frozenset("0123456789abcdef")
+    if (
+        manifest.artifact_format != "keras-v3"
+        or len(manifest.artifact_sha256) != 64
+        or not set(manifest.artifact_sha256) <= hexadecimal
+        or len(manifest.split_id) != 64
+        or not set(manifest.split_id) <= hexadecimal
+        or manifest.feature_names != FEATURE_NAMES
+        or manifest.target_name != TARGET_NAME
+        or manifest.interval_minutes != 5
+        or manifest.lookback_steps != 12
+        or manifest.horizon_steps != 1
+    ):
+        raise PredictionTrainingError(
+            "invalid_manifest", "manifest does not match the prediction contract"
+        )
+    positive_counts = (
+        manifest.slot_count,
+        manifest.train_examples,
+        manifest.validation_examples,
+        manifest.test_examples,
+        manifest.latency_repetitions,
+    )
+    if any(
+        not isinstance(value, int) or isinstance(value, bool) or value <= 0
+        for value in positive_counts
+    ):
+        raise PredictionTrainingError(
+            "invalid_manifest", "manifest counts must be positive integers"
+        )
+    if not all(
+        isinstance(value, str) and value
+        for value in (manifest.tensorflow_version, manifest.keras_version)
+    ):
+        raise PredictionTrainingError(
+            "invalid_manifest", "manifest framework versions must be non-empty strings"
+        )
+    try:
+        TrainingConfig(
+            model=manifest.model,
+            seed=manifest.seed,
+            epochs=manifest.epochs,
+            batch_size=manifest.batch_size,
+            learning_rate=manifest.learning_rate,
+            patience=manifest.patience,
+            recurrent_units=manifest.recurrent_units,
+            transformer_width=manifest.transformer_width,
+            transformer_heads=manifest.transformer_heads,
+            latency_repetitions=manifest.latency_repetitions,
+        )
+    except PredictionTrainingError as error:
+        raise PredictionTrainingError(
+            "invalid_manifest", "manifest training configuration is invalid"
+        ) from error
 
 
 def load_manifest(

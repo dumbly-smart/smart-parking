@@ -110,6 +110,7 @@ def completed_metrics() -> EvaluationMetrics:
         {"epochs": 0},
         {"batch_size": 0},
         {"learning_rate": float("nan")},
+        {"learning_rate": 10**1000},
         {"patience": -1},
         {"transformer_width": 15},
         {"latency_repetitions": 0},
@@ -275,6 +276,30 @@ def test_manifest_loader_wraps_malformed_metric_type(tmp_path) -> None:
     )
     payload = json.loads(manifest_path.read_text())
     payload["mae"] = "not-a-number"
+    manifest_path.write_text(json.dumps(payload))
+
+    with pytest.raises(PredictionTrainingError) as raised:
+        load_manifest(manifest_path)
+
+    assert raised.value.code == "invalid_manifest"
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("feature_names", list(reversed(FEATURE_NAMES))),
+        ("lookback_steps", 11),
+        ("completed_at", "2026-09-11T05:30:00+05:30"),
+    ],
+)
+def test_manifest_loader_rejects_tampered_contract_without_expected_dataset(
+    tmp_path, field, value
+) -> None:
+    manifest_path = publish_artifact(
+        ByteSavingModel(), prepared_dataset(), TrainingConfig(), completed_metrics(), tmp_path
+    )
+    payload = json.loads(manifest_path.read_text())
+    payload[field] = value
     manifest_path.write_text(json.dumps(payload))
 
     with pytest.raises(PredictionTrainingError) as raised:

@@ -73,15 +73,20 @@ class TrainingConfig:
             raise PredictionTrainingError(
                 "invalid_training_config", "patience must be non-negative"
             )
+        try:
+            learning_rate = float(self.learning_rate)
+        except (OverflowError, TypeError, ValueError):
+            learning_rate = math.nan
         if (
             not isinstance(self.learning_rate, Real)
             or isinstance(self.learning_rate, bool)
-            or not math.isfinite(self.learning_rate)
-            or self.learning_rate <= 0
+            or not math.isfinite(learning_rate)
+            or learning_rate <= 0
         ):
             raise PredictionTrainingError(
                 "invalid_training_config", "learning_rate must be finite and positive"
             )
+        object.__setattr__(self, "learning_rate", learning_rate)
         if self.transformer_width % self.transformer_heads:
             raise PredictionTrainingError(
                 "invalid_training_config",
