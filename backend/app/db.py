@@ -6,6 +6,7 @@ from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import TypeVar
 
 from backend.app.config import SlotConfig
 from backend.app.models.occupancy import OccupancyPersistenceResult, OccupancyTransition
@@ -111,7 +112,18 @@ CREATE TABLE IF NOT EXISTS prediction_runs (
     artifact_metadata TEXT NOT NULL,
     created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
+
+CREATE TABLE IF NOT EXISTS prediction_demo_records (
+    dataset_key TEXT NOT NULL,
+    table_name TEXT NOT NULL CHECK (table_name IN (
+        'context_samples', 'vehicles', 'parking_sessions', 'optimizer_runs', 'allocations'
+    )),
+    row_id INTEGER NOT NULL CHECK (row_id >= 1),
+    PRIMARY KEY (dataset_key, table_name, row_id)
+);
 """
+
+_TransactionResult = TypeVar("_TransactionResult")
 
 
 class Database:
@@ -133,6 +145,14 @@ class Database:
             raise
         finally:
             connection.close()
+
+    def run_immediate_transaction(
+        self, operation: Callable[[sqlite3.Connection], _TransactionResult]
+    ) -> _TransactionResult:
+        """Run one small write operation under a SQLite immediate transaction."""
+        with self.connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            return operation(connection)
 
     def initialize(self, slots: Sequence[SlotConfig]) -> None:
         if not slots:

@@ -19,6 +19,7 @@ EXPECTED_TABLES = {
     "optimizer_runs",
     "parking_sessions",
     "parking_slots",
+    "prediction_demo_records",
     "prediction_runs",
     "vehicles",
 }
