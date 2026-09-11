@@ -57,18 +57,18 @@ for controllers and the simulator.
 A new command-line script is the simulation driver, rather than adding vehicle
 controls to the browser. It talks to the existing public HTTP contracts using
 the Python standard library and accepts a configurable base URL and deterministic
-RFID/idempotency values. It performs a simulated entry, triggers an optimizer
-comparison over the current status-derived candidates, reads the prediction,
-and prints a privacy-safe summary that omits its RFID input. The dashboard then
-observes the resulting status and persisted optimizer data through its normal
-polling API calls.
+RFID/idempotency values. It generates a deterministic JPEG large enough for the
+committed demo ROIs, submits the configured smoothing count of camera frames,
+performs a simulated entry, triggers an optimizer comparison over the current
+status-derived candidates, reads the prediction, and prints a privacy-safe
+summary that omits its RFID input. The dashboard then observes the resulting
+status and persisted optimizer data through its normal polling API calls.
 
-Camera simulation remains outside this first script because the existing camera
-endpoint requires a real JPEG and configured ROI geometry. The demonstration is
-still complete without hardware because lifecycle, allocation comparison,
-prediction fallback, and UI are all exercised deterministically. A caller may
-submit an already prepared simulated camera JPEG through the existing endpoint
-before or during the demo.
+The documented demonstration begins by seeding deterministic prediction history
+with the existing seed command. Camera simulation uses the existing multipart
+camera endpoint and Pillow, which is already a project dependency; it adds no
+new runtime package or occupancy rule. Lifecycle, allocation, prediction, and
+dashboard steps continue through their existing HTTP contracts.
 
 ## Server structure
 
