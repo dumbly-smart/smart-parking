@@ -333,6 +333,6 @@ def replace_prediction_demo_data(database: Database, config: DemoDataConfig) -> 
         raise DemoDataError("invalid_demo_database", "database must be initialized")
     if not isinstance(config, DemoDataConfig):
         raise DemoDataError("invalid_demo_config", "config must be a DemoDataConfig")
-    return database.run_immediate_transaction(
+    return database.run_prediction_demo_transaction(
         lambda connection: _insert_demo_data(connection, config)
     )

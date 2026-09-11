@@ -1,11 +1,12 @@
 # Smart Parking Project Progress
 
-Last updated: 2026-09-05
+Last updated: 2026-09-11
 
 ## Current Status
 
-Milestone 4 (scalable vision occupancy pipeline) is complete and verified on
-`main`; implementation changes run through commit `88275f0`.
+Prediction comparison is in progress. Shared preprocessing, deterministic demo
+history, and the common LSTM/GRU/Transformer training, evaluation, and artifact
+boundary are implemented; persistence and runtime/comparison APIs remain.
 
 ## Milestones
 
@@ -20,19 +21,34 @@ Milestone 4 (scalable vision occupancy pipeline) is complete and verified on
 | Optimizer comparison | Complete | 20 focused tests; shared scenario API atomically persists GA/PSO/ACO metrics |
 | Parking lifecycle API | Complete | 23 focused and 49 full tests pass; RFID lifecycle is atomic and retry-safe |
 | Vision occupancy pipeline | Complete | 22 focused and 90 full tests pass; dynamic slots, ROI heuristic, smoothing, persistence, and JPEG API work |
-| Prediction comparison | In progress | Shared preprocessing slice defines one chronological split, feature contract, and leakage-safe scaling for all predictors |
+| Prediction comparison | In progress | 113 focused tests cover shared preparation, demo generation, three trainers, evaluation, and manifests; persistence/APIs remain |
 | Dashboard | Not started | Live five-slot state and both comparison tables are visible |
 | Firmware integration | Not started | Both sketches build and complete the documented hardware flow |
 | End-to-end demo | Not started | Seed, simulated camera, RFID entry, allocation, prediction, and UI run without hardware |
 
 ## Completed This Session
 
+- Added transactionally replaceable deterministic prediction demo history with
+  explicit ownership records, realistic five-minute context, completed
+  sessions, allocation objectives, and no prediction-boundary RFID exposure.
+- Added real optional TensorFlow/Keras builders for compact LSTM, GRU, and
+  temporal Transformer regressors behind one `PreparedDataset`-only trainer.
+- Added shared MAE, MSE, RMSE, and inference-latency evaluation plus
+  content-addressed `.keras` files and atomically published compatibility
+  manifests.
+- Added seed and three-model training commands. GRU is the recommended
+  affordable runtime candidate pending target-machine comparison results.
+- Verified 113 focused prediction tests and 203 full tests. Three real
+  TensorFlow smoke tests skip because the optional dependency is not installed;
+  Ruff and `git diff --check` pass. The two FastAPI/Starlette warnings remain
+  pre-existing dependency deprecations.
+
 - Documented the shared prediction preprocessing contracts: persisted context,
   lifecycle, allocation, and optimizer records are aggregated into regular
   five-minute buckets with a twelve-bucket history and next-bucket target.
 - Recorded privacy-preserving RFID aggregates, the chronological 70/15/15
   split, and training-only continuous-feature scaling to prevent leakage.
-- Verified 35 focused prediction tests and 125 full tests; Ruff and
+- Verified 72 focused prediction tests and 162 full tests; Ruff and
   `git diff --check` pass. The two warnings remain pre-existing dependency
   deprecations from the FastAPI/Starlette test-client integration.
 
@@ -104,8 +120,9 @@ Milestone 4 (scalable vision occupancy pipeline) is complete and verified on
 
 ## Next Task
 
-Build the deterministic demo-data generator and the shared model-training and
-evaluation boundary for every predictor.
+Persist completed prediction comparisons atomically, then expose comparison
+and runtime forecast APIs with compatible-artifact loading and deterministic
+fallback behavior.
 
 ## Blockers
 

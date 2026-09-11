@@ -146,10 +146,10 @@ class Database:
         finally:
             connection.close()
 
-    def run_immediate_transaction(
+    def run_prediction_demo_transaction(
         self, operation: Callable[[sqlite3.Connection], _TransactionResult]
     ) -> _TransactionResult:
-        """Run one small write operation under a SQLite immediate transaction."""
+        """Run prediction demo replacement under one reserved transaction."""
         with self.connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
             return operation(connection)

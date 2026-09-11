@@ -8,6 +8,7 @@ import math
 import os
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
+from numbers import Real
 from pathlib import Path
 from typing import Protocol
 from uuid import uuid4
@@ -78,7 +79,13 @@ def _sha256_file(path: Path) -> str:
 
 def _validate_metrics(metrics: EvaluationMetrics) -> None:
     values = (metrics.mae, metrics.mse, metrics.rmse, metrics.inference_latency_ms)
-    if not all(math.isfinite(value) and value >= 0 for value in values):
+    if not all(
+        isinstance(value, Real)
+        and not isinstance(value, bool)
+        and math.isfinite(value)
+        and value >= 0
+        for value in values
+    ):
         raise PredictionTrainingError(
             "invalid_manifest", "artifact metrics must be finite and non-negative"
         )
@@ -153,7 +160,7 @@ def publish_artifact(
             raise OSError("model save did not create a file artifact")
         digest = _sha256_file(staging)
         artifact = directory / f"{digest}.keras"
-        if artifact.exists():
+        if artifact.exists() and _sha256_file(artifact) == digest:
             staging.unlink()
         else:
             os.replace(staging, artifact)

@@ -153,3 +153,45 @@ features are standardized from training data only, preventing validation/test
 leakage. Runtime inference will be cached per five-minute bucket in a later
 prediction-service slice; model training will never occur inside an API
 request.
+
+## Prediction demo data and model comparison
+
+Seed fourteen days of deterministic five-minute history into an initialized
+SQLite database:
+
+```bash
+.venv/bin/python -m scripts.seed_prediction_demo_data \
+  --database-url sqlite:///./data/parking.db \
+  --dataset-key prediction-demo \
+  --seed 20260908 \
+  --days 14
+```
+
+Rerunning the command replaces only rows owned by that dataset key. Unrelated
+parking records are preserved, and generated RFID identifiers remain inside
+the lifecycle database boundary.
+
+Install the optional ML dependency and train all three model families:
+
+```bash
+pip install -e '.[ml]'
+.venv/bin/python -m scripts.train_prediction_models \
+  --database-url sqlite:///./data/parking.db \
+  --artifact-directory artifacts/prediction
+```
+
+The database snapshot is prepared exactly once. LSTM, GRU, and temporal
+Transformer trainers receive the same immutable `PreparedDataset` and
+`split_id`; they cannot perform private preprocessing or splitting. Every run
+uses shared fitting rules and reports MAE, MSE, RMSE, and median per-example
+inference latency on the untouched test split.
+
+Each model is saved as a content-addressed `.keras` file. Its atomically
+published JSON manifest records the artifact digest, data contract,
+hyperparameters, split sizes, framework versions, and metrics. Later runtime
+services must validate the manifest and `split_id` before loading the artifact.
+
+GRU is the recommended affordable deployment candidate because it has fewer
+gates than LSTM and far less attention overhead than the Transformer for this
+short twelve-step history. Final selection should still use the measured
+quality and latency report produced on the target machine.

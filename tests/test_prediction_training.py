@@ -26,6 +26,9 @@ from prediction.training import (
     ModelFamily,
     PredictionTrainingError,
     TrainingConfig,
+    compare_models,
+    default_comparison_configs,
+    train_model,
 )
 
 
@@ -67,6 +70,33 @@ class ByteSavingModel:
 
     def save(self, path: Path) -> None:
         path.write_bytes(self.contents)
+
+
+class RecordingBackend:
+    def __init__(self) -> None:
+        self.datasets: list[PreparedDataset] = []
+        self.fit_calls: list[tuple[PreparedSplit, PreparedSplit, TrainingConfig]] = []
+        self.prediction_inputs: list[np.ndarray] = []
+
+    def build(self, config: TrainingConfig, dataset: PreparedDataset) -> ByteSavingModel:
+        self.datasets.append(dataset)
+        return ByteSavingModel(config.model.value.encode())
+
+    def fit(
+        self,
+        model: ByteSavingModel,
+        train: PreparedSplit,
+        validation: PreparedSplit,
+        config: TrainingConfig,
+    ) -> None:
+        self.fit_calls.append((train, validation, config))
+
+    def predict(self, model: ByteSavingModel, inputs: np.ndarray) -> np.ndarray:
+        self.prediction_inputs.append(inputs)
+        return np.full((inputs.shape[0], 1), 0.4)
+
+    def framework_versions(self) -> dict[str, str]:
+        return {"tensorflow": "test", "keras": "test"}
 
 
 def completed_metrics() -> EvaluationMetrics:
@@ -221,6 +251,38 @@ def test_manifest_loader_rejects_tampered_artifact(tmp_path) -> None:
     assert raised.value.code == "artifact_mismatch"
 
 
+def test_publish_replaces_corrupt_file_at_content_address(tmp_path) -> None:
+    expected = b"expected-model"
+    digest = hashlib.sha256(expected).hexdigest()
+    artifact = tmp_path / f"{digest}.keras"
+    tmp_path.mkdir(exist_ok=True)
+    artifact.write_bytes(b"corrupt")
+
+    publish_artifact(
+        ByteSavingModel(expected),
+        prepared_dataset(),
+        TrainingConfig(),
+        completed_metrics(),
+        tmp_path,
+    )
+
+    assert artifact.read_bytes() == expected
+
+
+def test_manifest_loader_wraps_malformed_metric_type(tmp_path) -> None:
+    manifest_path = publish_artifact(
+        ByteSavingModel(), prepared_dataset(), TrainingConfig(), completed_metrics(), tmp_path
+    )
+    payload = json.loads(manifest_path.read_text())
+    payload["mae"] = "not-a-number"
+    manifest_path.write_text(json.dumps(payload))
+
+    with pytest.raises(PredictionTrainingError) as raised:
+        load_manifest(manifest_path)
+
+    assert raised.value.code == "invalid_manifest"
+
+
 def test_manifest_loader_rejects_unsafe_path_and_dataset_mismatch(tmp_path) -> None:
     manifest_path = publish_artifact(
         ByteSavingModel(), prepared_dataset(), TrainingConfig(), completed_metrics(), tmp_path
@@ -241,3 +303,64 @@ def test_manifest_loader_rejects_unsafe_path_and_dataset_mismatch(tmp_path) -> N
             expected_dataset=replace(prepared_dataset(), split_id="b" * 64),
         )
     assert mismatch.value.code == "invalid_manifest"
+
+
+def test_comparison_passes_same_dataset_to_every_model(tmp_path) -> None:
+    dataset = prepared_dataset()
+    backend = RecordingBackend()
+
+    results = compare_models(
+        dataset,
+        default_comparison_configs(),
+        tmp_path,
+        _backend=backend,
+    )
+
+    assert len(backend.datasets) == 3
+    assert all(received is dataset for received in backend.datasets)
+    assert [result.model for result in results] == list(ModelFamily)
+    assert all(result.split_id == dataset.split_id for result in results)
+
+
+def test_training_preserves_split_roles_and_publishes_result(tmp_path) -> None:
+    dataset = prepared_dataset()
+    backend = RecordingBackend()
+
+    result = train_model(dataset, TrainingConfig(), tmp_path, _backend=backend)
+
+    train, validation, config = backend.fit_calls[0]
+    assert train is dataset.train
+    assert validation is dataset.validation
+    assert config.model is ModelFamily.GRU
+    assert all(inputs is dataset.test.inputs for inputs in backend.prediction_inputs)
+    assert len(backend.prediction_inputs) == 1 + 1 + config.latency_repetitions
+    assert result.metrics.mae == 0.0
+    assert result.manifest_path.is_file()
+
+
+@pytest.mark.parametrize(
+    "configs",
+    [
+        (TrainingConfig(model=ModelFamily.LSTM),),
+        (
+            TrainingConfig(model=ModelFamily.LSTM),
+            TrainingConfig(model=ModelFamily.LSTM),
+            TrainingConfig(model=ModelFamily.TRANSFORMER),
+        ),
+    ],
+)
+def test_comparison_rejects_missing_or_duplicate_model_configs(tmp_path, configs) -> None:
+    with pytest.raises(PredictionTrainingError) as raised:
+        compare_models(prepared_dataset(), configs, tmp_path, _backend=RecordingBackend())
+
+    assert raised.value.code == "invalid_training_config"
+
+
+def test_comparison_returns_fixed_order_for_unordered_configs(tmp_path) -> None:
+    configs = tuple(reversed(default_comparison_configs()))
+
+    results = compare_models(
+        prepared_dataset(), configs, tmp_path, _backend=RecordingBackend()
+    )
+
+    assert [result.model for result in results] == list(ModelFamily)
