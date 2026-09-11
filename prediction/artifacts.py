@@ -209,7 +209,11 @@ def _manifest_from_payload(payload: object) -> ArtifactManifest:
         manifest = ArtifactManifest(**values)
     except (KeyError, TypeError, ValueError) as error:
         raise PredictionTrainingError("invalid_manifest", "manifest schema is invalid") from error
-    if manifest.schema_version != MANIFEST_SCHEMA_VERSION:
+    if (
+        not isinstance(manifest.schema_version, int)
+        or isinstance(manifest.schema_version, bool)
+        or manifest.schema_version != MANIFEST_SCHEMA_VERSION
+    ):
         raise PredictionTrainingError("invalid_manifest", "manifest schema version is unsupported")
     _validate_metrics(
         EvaluationMetrics(
@@ -231,12 +235,22 @@ def _manifest_from_payload(payload: object) -> ArtifactManifest:
 
 def _validate_manifest_contract(manifest: ArtifactManifest) -> None:
     hexadecimal = frozenset("0123456789abcdef")
+    valid_artifact_hash = (
+        isinstance(manifest.artifact_sha256, str)
+        and len(manifest.artifact_sha256) == 64
+        and set(manifest.artifact_sha256) <= hexadecimal
+    )
+    valid_split_id = (
+        isinstance(manifest.split_id, str)
+        and len(manifest.split_id) == 64
+        and set(manifest.split_id) <= hexadecimal
+    )
     if (
         manifest.artifact_format != "keras-v3"
-        or len(manifest.artifact_sha256) != 64
-        or not set(manifest.artifact_sha256) <= hexadecimal
-        or len(manifest.split_id) != 64
-        or not set(manifest.split_id) <= hexadecimal
+        or not isinstance(manifest.artifact_filename, str)
+        or not manifest.artifact_filename
+        or not valid_artifact_hash
+        or not valid_split_id
         or manifest.feature_names != FEATURE_NAMES
         or manifest.target_name != TARGET_NAME
         or manifest.interval_minutes != 5

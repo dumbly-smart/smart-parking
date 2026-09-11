@@ -21,7 +21,7 @@ boundary are implemented; persistence and runtime/comparison APIs remain.
 | Optimizer comparison | Complete | 20 focused tests; shared scenario API atomically persists GA/PSO/ACO metrics |
 | Parking lifecycle API | Complete | 23 focused and 49 full tests pass; RFID lifecycle is atomic and retry-safe |
 | Vision occupancy pipeline | Complete | 22 focused and 90 full tests pass; dynamic slots, ROI heuristic, smoothing, persistence, and JPEG API work |
-| Prediction comparison | In progress | 117 focused tests cover shared preparation, demo generation, three trainers, evaluation, and manifests; persistence/APIs remain |
+| Prediction comparison | In progress | 119 focused tests cover shared preparation, demo generation, three trainers, evaluation, and manifests; persistence/APIs remain |
 | Dashboard | Not started | Live five-slot state and both comparison tables are visible |
 | Firmware integration | Not started | Both sketches build and complete the documented hardware flow |
 | End-to-end demo | Not started | Seed, simulated camera, RFID entry, allocation, prediction, and UI run without hardware |
@@ -38,7 +38,7 @@ boundary are implemented; persistence and runtime/comparison APIs remain.
   manifests.
 - Added seed and three-model training commands. GRU is the recommended
   affordable runtime candidate pending target-machine comparison results.
-- Verified 117 focused prediction tests and 207 full tests. Three real
+- Verified 119 focused prediction tests and 209 full tests. Three real
   TensorFlow smoke tests skip because the optional dependency is not installed;
   Ruff and `git diff --check` pass. The two FastAPI/Starlette warnings remain
   pre-existing dependency deprecations.

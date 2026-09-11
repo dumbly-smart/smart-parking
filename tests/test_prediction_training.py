@@ -290,6 +290,8 @@ def test_manifest_loader_wraps_malformed_metric_type(tmp_path) -> None:
         ("feature_names", list(reversed(FEATURE_NAMES))),
         ("lookback_steps", 11),
         ("completed_at", "2026-09-11T05:30:00+05:30"),
+        ("schema_version", True),
+        ("artifact_sha256", 7),
     ],
 )
 def test_manifest_loader_rejects_tampered_contract_without_expected_dataset(
