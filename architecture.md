@@ -62,8 +62,9 @@ The laptop/server is the system coordinator. The embedded devices collect input 
 
 - Builds identical time-series splits and features for all models.
 - Compares LSTM, GRU, and temporal Transformer models using MAE, RMSE, MSE, and inference latency.
-- Loads the selected trained artifact when available.
-- Uses a deterministic baseline when no trained artifact exists.
+- Validates artifact hash, manifest, split, feature, geometry, and scaler
+  compatibility before loading a selected artifact.
+- Uses a deterministic baseline when no compatible trained artifact exists.
 
 ### Allocation service
 

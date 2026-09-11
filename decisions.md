@@ -257,3 +257,32 @@ Deployments can change slot count through configuration while the current demo
 continues to use five slots. The legacy SQLite slot-ID constraint requires an
 idempotent data-preserving migration. Firmware remains limited by its configured
 physical outputs until its own integration milestone.
+
+## ADR-012: Runtime prediction uses schema-v2 frozen scaler contracts
+
+- Date: 2026-09-11
+- Status: Accepted
+
+### Context
+
+A trained Keras model must receive inputs transformed with the scaler fitted
+from its training partition. Recomputing a scaler at runtime would silently
+change model input semantics. The prior artifact schema carried geometry and
+feature names but not the immutable scaler, while its split identifier did not
+distinguish changed aggregate feature values.
+
+### Decision
+
+Publish schema-v2 prediction manifests containing the existing immutable
+continuous-feature scaler metadata and include the canonical privacy-safe
+feature timeline in `PreparedDataset.split_id`. Persist only validated,
+whitelisted manifest summaries. Runtime validates this full contract and the
+artifact digest before lazy model loading; schema-v1 manifests remain visible
+as historical comparison records but are not eligible for runtime inference.
+
+### Consequences
+
+Runtime forecasts cannot accidentally use a changed source snapshot or scaler.
+No raw source rows or RFID identifiers are stored in the manifest or exposed
+through APIs. Older artifacts safely degrade to the deterministic baseline
+until retrained under schema v2.

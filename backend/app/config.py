@@ -67,6 +67,7 @@ class Settings(BaseSettings):
     camera_max_image_bytes: int = Field(default=5 * 1024 * 1024, gt=0)
     selected_optimizer: Literal["ga", "pso", "aco"] = "ga"
     selected_predictor: Literal["baseline", "lstm", "gru", "transformer"] = "baseline"
+    prediction_artifact_directory: Path = Path("artifacts/prediction")
     hardware_enabled: bool = False
     _parking: ParkingConfig = PrivateAttr()
     _roi: RoiConfig = PrivateAttr()

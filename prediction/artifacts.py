@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Protocol
 from uuid import uuid4
 
-from prediction.models import FEATURE_NAMES, TARGET_NAME, PreparedDataset
+from prediction.models import CONTINUOUS_FEATURE_NAMES, FEATURE_NAMES, TARGET_NAME, PreparedDataset
 from prediction.training import (
     EvaluationMetrics,
     ModelFamily,
@@ -21,7 +21,8 @@ from prediction.training import (
     TrainingConfig,
 )
 
-MANIFEST_SCHEMA_VERSION = 1
+MANIFEST_SCHEMA_VERSION = 2
+_SUPPORTED_MANIFEST_SCHEMA_VERSIONS = frozenset((1, MANIFEST_SCHEMA_VERSION))
 
 
 class SavedModel(Protocol):
@@ -61,6 +62,13 @@ class ArtifactManifest:
     tensorflow_version: str
     keras_version: str
     completed_at: str
+    scaler_feature_indices: tuple[int, ...] | None = None
+    scaler_means: tuple[float, ...] | None = None
+    scaler_scales: tuple[float, ...] | None = None
+
+    @property
+    def runtime_compatible(self) -> bool:
+        return self.schema_version == MANIFEST_SCHEMA_VERSION
 
     def as_dict(self) -> dict[str, object]:
         payload = asdict(self)
@@ -139,6 +147,9 @@ def _build_manifest(
         tensorflow_version=framework_versions.get("tensorflow", "unavailable"),
         keras_version=framework_versions.get("keras", "unavailable"),
         completed_at=completed_at.astimezone(UTC).isoformat(),
+        scaler_feature_indices=dataset.scaler.feature_indices,
+        scaler_means=dataset.scaler.means,
+        scaler_scales=dataset.scaler.scales,
     )
 
 
@@ -204,15 +215,23 @@ def _manifest_from_payload(payload: object) -> ArtifactManifest:
         raise PredictionTrainingError("invalid_manifest", "manifest must be a JSON object")
     try:
         values = dict(payload)
+        schema_version = values.get("schema_version")
+        if schema_version == 1:
+            values.setdefault("scaler_feature_indices", None)
+            values.setdefault("scaler_means", None)
+            values.setdefault("scaler_scales", None)
         values["model"] = ModelFamily(values["model"])
         values["feature_names"] = tuple(values["feature_names"])
+        for field in ("scaler_feature_indices", "scaler_means", "scaler_scales"):
+            if values.get(field) is not None:
+                values[field] = tuple(values[field])
         manifest = ArtifactManifest(**values)
     except (KeyError, TypeError, ValueError) as error:
         raise PredictionTrainingError("invalid_manifest", "manifest schema is invalid") from error
     if (
         not isinstance(manifest.schema_version, int)
         or isinstance(manifest.schema_version, bool)
-        or manifest.schema_version != MANIFEST_SCHEMA_VERSION
+        or manifest.schema_version not in _SUPPORTED_MANIFEST_SCHEMA_VERSIONS
     ):
         raise PredictionTrainingError("invalid_manifest", "manifest schema version is unsupported")
     _validate_metrics(
@@ -298,6 +317,38 @@ def _validate_manifest_contract(manifest: ArtifactManifest) -> None:
         raise PredictionTrainingError(
             "invalid_manifest", "manifest training configuration is invalid"
         ) from error
+    if manifest.runtime_compatible:
+        scaler = (
+            manifest.scaler_feature_indices,
+            manifest.scaler_means,
+            manifest.scaler_scales,
+        )
+        if any(value is None for value in scaler):
+            raise PredictionTrainingError("invalid_manifest", "runtime scaler is missing")
+        indices, means, scales = scaler
+        if (
+            indices is None
+            or means is None
+            or scales is None
+            or indices != tuple(
+                FEATURE_NAMES.index(name) for name in CONTINUOUS_FEATURE_NAMES
+            )
+            or len(indices) != len(means)
+            or len(means) != len(scales)
+            or any(not isinstance(index, int) or isinstance(index, bool) for index in indices)
+            or any(not _is_finite_non_negative(mean) for mean in means)
+            or any(not _is_finite_non_negative(scale) or float(scale) <= 0 for scale in scales)
+        ):
+            raise PredictionTrainingError("invalid_manifest", "runtime scaler is invalid")
+    elif any(
+        value is not None
+        for value in (
+            manifest.scaler_feature_indices,
+            manifest.scaler_means,
+            manifest.scaler_scales,
+        )
+    ):
+        raise PredictionTrainingError("invalid_manifest", "legacy manifest has runtime scaler data")
 
 
 def load_manifest(
@@ -339,6 +390,14 @@ def load_manifest(
         or manifest.train_examples != expected_dataset.train.inputs.shape[0]
         or manifest.validation_examples != expected_dataset.validation.inputs.shape[0]
         or manifest.test_examples != expected_dataset.test.inputs.shape[0]
+        or (
+            manifest.runtime_compatible
+            and (
+                manifest.scaler_feature_indices != expected_dataset.scaler.feature_indices
+                or manifest.scaler_means != expected_dataset.scaler.means
+                or manifest.scaler_scales != expected_dataset.scaler.scales
+            )
+        )
     ):
         raise PredictionTrainingError(
             "invalid_manifest", "manifest is incompatible with the expected prepared dataset"

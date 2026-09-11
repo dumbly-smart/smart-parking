@@ -41,6 +41,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             default_comparison_configs(),
             args.artifact_directory,
         )
+        database.save_prediction_results(results)
     except PredictionTrainingError as error:
         print(f"error: {error.message}", file=sys.stderr)
         return 2

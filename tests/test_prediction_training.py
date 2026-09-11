@@ -10,6 +10,8 @@ import numpy as np
 import pytest
 
 import prediction.architectures as architectures
+from backend.app.config import SlotConfig
+from backend.app.db import Database
 from prediction.artifacts import load_manifest, publish_artifact
 from prediction.evaluation import evaluate_predictions, measure_inference_latency
 from prediction.models import (
@@ -26,6 +28,7 @@ from prediction.training import (
     ModelFamily,
     PredictionTrainingError,
     TrainingConfig,
+    TrainingResult,
     compare_models,
     default_comparison_configs,
     train_model,
@@ -101,6 +104,12 @@ class RecordingBackend:
 
 def completed_metrics() -> EvaluationMetrics:
     return EvaluationMetrics(mae=0.1, mse=0.02, rmse=math.sqrt(0.02), inference_latency_ms=1.5)
+
+
+def initialized_database(tmp_path) -> Database:
+    database = Database(tmp_path / "prediction.db")
+    database.initialize([SlotConfig(id=1, name="S1", walking_distance=0.5, zone="north")])
+    return database
 
 
 @pytest.mark.parametrize(
@@ -222,7 +231,66 @@ def test_publish_artifact_hashes_model_and_writes_compatible_manifest(tmp_path) 
     assert payload["split_id"] == dataset.split_id
     assert tuple(payload["feature_names"]) == FEATURE_NAMES
     assert payload["lookback_steps"] == 12
+    assert payload["schema_version"] == 2
+    assert payload["scaler_feature_indices"] == list(dataset.scaler.feature_indices)
+    assert payload["scaler_means"] == list(dataset.scaler.means)
+    assert payload["scaler_scales"] == list(dataset.scaler.scales)
     assert load_manifest(manifest_path, expected_dataset=dataset).model is ModelFamily.GRU
+
+
+def test_manifest_loader_rejects_dataset_with_different_fitted_scaler(tmp_path) -> None:
+    dataset = prepared_dataset()
+    manifest_path = publish_artifact(
+        ByteSavingModel(), dataset, TrainingConfig(), completed_metrics(), tmp_path
+    )
+    incompatible = replace(
+        dataset,
+        scaler=ScalerMetadata(
+            feature_indices=dataset.scaler.feature_indices,
+            means=(0.5,) * len(dataset.scaler.means),
+            scales=dataset.scaler.scales,
+        ),
+    )
+
+    with pytest.raises(PredictionTrainingError) as raised:
+        load_manifest(manifest_path, expected_dataset=incompatible)
+
+    assert raised.value.code == "invalid_manifest"
+
+
+def test_prediction_results_persist_validated_manifest_summaries(tmp_path) -> None:
+    dataset = prepared_dataset()
+    manifest_path = publish_artifact(
+        ByteSavingModel(), dataset, TrainingConfig(), completed_metrics(), tmp_path
+    )
+    result = TrainingResult(ModelFamily.GRU, dataset.split_id, completed_metrics(), manifest_path)
+    database = initialized_database(tmp_path)
+
+    database.save_prediction_results((result,))
+
+    saved = database.list_prediction_results()
+    assert len(saved) == 1
+    assert saved[0].model is ModelFamily.GRU
+    assert saved[0].split_id == dataset.split_id
+    assert saved[0].artifact_sha256 == json.loads(manifest_path.read_text())["artifact_sha256"]
+    assert "rfid" not in json.dumps(saved[0].artifact_metadata).lower()
+
+
+def test_prediction_result_persistence_rejects_tampered_manifest_before_insert(tmp_path) -> None:
+    dataset = prepared_dataset()
+    manifest_path = publish_artifact(
+        ByteSavingModel(), dataset, TrainingConfig(), completed_metrics(), tmp_path
+    )
+    payload = json.loads(manifest_path.read_text())
+    payload["artifact_sha256"] = "0" * 64
+    manifest_path.write_text(json.dumps(payload))
+    database = initialized_database(tmp_path)
+    result = TrainingResult(ModelFamily.GRU, dataset.split_id, completed_metrics(), manifest_path)
+
+    with pytest.raises(PredictionTrainingError):
+        database.save_prediction_results((result,))
+
+    assert database.list_prediction_results() == []
 
 
 def test_publish_failure_leaves_no_discoverable_manifest(tmp_path) -> None:

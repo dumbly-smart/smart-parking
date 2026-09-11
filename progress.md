@@ -4,9 +4,10 @@ Last updated: 2026-09-11
 
 ## Current Status
 
-Prediction comparison is in progress. Shared preprocessing, deterministic demo
-history, and the common LSTM/GRU/Transformer training, evaluation, and artifact
-boundary are implemented; persistence and runtime/comparison APIs remain.
+Prediction comparison is complete. Shared preprocessing, deterministic demo
+history, common LSTM/GRU/Transformer training, evaluation, schema-v2 artifact
+contracts, atomic comparison persistence, and runtime/comparison APIs are
+implemented.
 
 ## Milestones
 
@@ -21,12 +22,27 @@ boundary are implemented; persistence and runtime/comparison APIs remain.
 | Optimizer comparison | Complete | 20 focused tests; shared scenario API atomically persists GA/PSO/ACO metrics |
 | Parking lifecycle API | Complete | 23 focused and 49 full tests pass; RFID lifecycle is atomic and retry-safe |
 | Vision occupancy pipeline | Complete | 22 focused and 90 full tests pass; dynamic slots, ROI heuristic, smoothing, persistence, and JPEG API work |
-| Prediction comparison | In progress | 119 focused tests cover shared preparation, demo generation, three trainers, evaluation, and manifests; persistence/APIs remain |
+| Prediction comparison | Complete | 116 focused prediction tests and 218 full tests pass; persisted comparisons and guarded runtime forecasts work without TensorFlow installed |
 | Dashboard | Not started | Live five-slot state and both comparison tables are visible |
 | Firmware integration | Not started | Both sketches build and complete the documented hardware flow |
 | End-to-end demo | Not started | Seed, simulated camera, RFID entry, allocation, prediction, and UI run without hardware |
 
 ## Completed This Session
+
+- Added schema-v2 prediction manifests with the frozen non-RFID scaler
+  contract, a privacy-safe feature-timeline `split_id`, and runtime validation
+  before any model loading.
+- Added atomic SQLite persistence of validated comparison manifests, the
+  predictor benchmark API, and training-command persistence after a complete
+  comparison.
+- Added a shared, fixed-five-minute runtime input window plus a cached forecast
+  service and `GET /api/prediction`. Unsafe, absent, stale, or invalid model
+  artifacts degrade to a deterministic baseline without exposing RFID or
+  filesystem details.
+- Verified 116 focused prediction tests and 218 full tests. Three TensorFlow
+  smoke tests skip because the optional dependency is not installed; Ruff and
+  `git diff --check` pass. The two FastAPI/Starlette warnings remain
+  dependency deprecations.
 
 - Added transactionally replaceable deterministic prediction demo history with
   explicit ownership records, realistic five-minute context, completed
@@ -120,9 +136,8 @@ boundary are implemented; persistence and runtime/comparison APIs remain.
 
 ## Next Task
 
-Persist completed prediction comparisons atomically, then expose comparison
-and runtime forecast APIs with compatible-artifact loading and deterministic
-fallback behavior.
+Implement the framework-free dashboard using the completed parking,
+optimizer-comparison, and predictor-comparison APIs.
 
 ## Blockers
 

@@ -11,8 +11,10 @@ from backend.app.db import Database
 from backend.app.routes.allocation import router as allocation_router
 from backend.app.routes.occupancy import router as occupancy_router
 from backend.app.routes.parking import router as parking_router
+from backend.app.routes.prediction import router as prediction_router
 from backend.app.services.occupancy import OccupancyService
 from backend.app.services.parking import ParkingService
+from backend.app.services.prediction import PredictionService
 from vision.detector import HeuristicDetector
 
 
@@ -49,12 +51,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 application_settings.roi.heuristic.required_consecutive_frames
             ),
         )
+        application.state.prediction_service = PredictionService(
+            database,
+            application_settings.selected_predictor,
+            application_settings.prediction_artifact_directory,
+        )
         yield
 
     application = FastAPI(title="Smart Parking API", version="0.1.0", lifespan=lifespan)
     application.include_router(allocation_router)
     application.include_router(occupancy_router)
     application.include_router(parking_router)
+    application.include_router(prediction_router)
 
     @application.get("/health", response_model=HealthResponse)
     def health(request: Request) -> HealthResponse:

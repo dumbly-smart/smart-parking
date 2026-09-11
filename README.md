@@ -150,8 +150,8 @@ entry/exit activity, active sessions, returning-vehicle rate, and aggregate
 walking-distance, congestion, and fairness values. RFID identifiers remain in
 the lifecycle boundary and are never included in model arrays. Continuous
 features are standardized from training data only, preventing validation/test
-leakage. Runtime inference will be cached per five-minute bucket in a later
-prediction-service slice; model training will never occur inside an API
+leakage. Runtime inference uses the same aggregation and immutable fitted
+scaler, is cached per five-minute target bucket, and never trains inside an API
 request.
 
 ## Prediction demo data and model comparison
@@ -188,8 +188,18 @@ inference latency on the untouched test split.
 
 Each model is saved as a content-addressed `.keras` file. Its atomically
 published JSON manifest records the artifact digest, data contract,
-hyperparameters, split sizes, framework versions, and metrics. Later runtime
-services must validate the manifest and `split_id` before loading the artifact.
+hyperparameters, split sizes, framework versions, metrics, and fitted
+non-RFID scaler contract. The training command validates and atomically stores
+the completed comparison in SQLite.
+
+`GET /api/benchmarks/predictors` returns persisted LSTM/GRU/Transformer
+metrics. `GET /api/prediction` predicts the next aligned five-minute bucket.
+Set `SMART_PARKING_SELECTED_PREDICTOR` to `baseline`, `lstm`, `gru`, or
+`transformer`, and set `SMART_PARKING_PREDICTION_ARTIFACT_DIRECTORY` when
+artifacts live elsewhere. Before loading an artifact, runtime validates its
+manifest schema, split ID, feature order, fixed geometry, scaler, basename,
+and SHA-256. Missing or incompatible artifacts use the deterministic latest
+occupancy baseline and report only a stable non-sensitive fallback reason.
 
 GRU is the recommended affordable deployment candidate because it has fewer
 gates than LSTM and far less attention overhead than the Transformer for this

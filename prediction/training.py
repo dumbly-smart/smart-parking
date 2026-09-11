@@ -110,6 +110,18 @@ class TrainingResult:
     manifest_path: Path
 
 
+@dataclass(frozen=True)
+class PersistedPredictionRun:
+    """A privacy-safe completed comparison row returned by SQLite."""
+
+    model: ModelFamily
+    split_id: str
+    metrics: EvaluationMetrics
+    artifact_sha256: str
+    artifact_metadata: dict[str, object]
+    created_at: str
+
+
 class _TrainingBackend(Protocol):
     def build(self, config: TrainingConfig, dataset: PreparedDataset) -> Any: ...
 

@@ -69,7 +69,6 @@ The optional TensorFlow dependency is required for real model training:
 ## Current status
 
 Shared prediction preprocessing, deterministic demo data, model comparison,
-evaluation, and artifact manifests are implemented. The current verification
-result is **209 tests passed**, with three TensorFlow-optional tests skipped in
-environments where TensorFlow is not installed. Prediction persistence and
-runtime/comparison APIs remain future work; see [progress.md](progress.md).
+evaluation, artifact manifests, persisted predictor comparisons, and runtime
+forecast APIs are implemented. See [progress.md](progress.md) for the current
+verification evidence and remaining dashboard work.

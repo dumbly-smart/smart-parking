@@ -13,6 +13,7 @@ from backend.app.config import SlotConfig
 from backend.app.db import Database
 from prediction.data import (
     build_feature_timeline,
+    build_runtime_input,
     parse_utc_timestamp,
     prepare_prediction_dataset,
 )
@@ -712,9 +713,6 @@ def test_prepared_dataset_is_deterministic() -> None:
 
     assert first.split_id == second.split_id
     assert len(first.split_id) == 64
-    assert first.split_id == (
-        "a697fd3c9f6921248ca6364f19c73d8cfd9ffc2a6c980f5a5962a8f87576318b"
-    )
     for first_split, second_split in zip(
         (first.train, first.validation, first.test),
         (second.train, second.validation, second.test),
@@ -723,6 +721,33 @@ def test_prepared_dataset_is_deterministic() -> None:
         np.testing.assert_array_equal(first_split.inputs, second_split.inputs)
         np.testing.assert_array_equal(first_split.targets, second_split.targets)
         assert first_split.target_timestamps == second_split.target_timestamps
+
+
+def test_prepared_dataset_identity_changes_when_privacy_safe_timeline_changes() -> None:
+    source = regular_prediction_source(bucket_count=120, slot_count=8)
+    changed_counts = list(index % 9 for index in range(120))
+    changed_counts[-1] = 8
+
+    first = prepare_prediction_dataset(source)
+    second = prepare_prediction_dataset(
+        regular_prediction_source(
+            bucket_count=120, slot_count=8, occupancy_counts=tuple(changed_counts)
+        )
+    )
+
+    assert first.split_id != second.split_id
+
+
+def test_runtime_input_uses_latest_complete_aligned_twelve_bucket_window() -> None:
+    source = regular_prediction_source(bucket_count=120, slot_count=8)
+    dataset = prepare_prediction_dataset(source)
+
+    runtime = build_runtime_input(source, dataset)
+
+    assert runtime.target_at == datetime(2026, 9, 4, 20, tzinfo=UTC)
+    assert runtime.inputs.shape == (1, 12, len(FEATURE_NAMES))
+    assert not runtime.inputs.flags.writeable
+    assert runtime.latest_occupancy_ratio == pytest.approx(2 / 8)
 
 
 def test_prepared_dataset_names_the_one_step_ahead_target() -> None:

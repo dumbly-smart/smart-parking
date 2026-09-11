@@ -47,6 +47,37 @@ class _ParsedAllocation:
     objectives: tuple[float, float, float]
 
 
+@dataclass(frozen=True)
+class RuntimeInput:
+    """One scaled shared-contract input window for the next five-minute bucket."""
+
+    inputs: np.ndarray
+    target_at: datetime
+    latest_occupancy_ratio: float
+
+    def __post_init__(self) -> None:
+        inputs = np.array(self.inputs, dtype=np.float64, copy=True)
+        if inputs.shape != (1, 12, len(FEATURE_NAMES)) or not np.isfinite(inputs).all():
+            raise PredictionDataError(
+                "invalid_runtime_input", "runtime inputs must match the fixed prediction contract"
+            )
+        if self.target_at.tzinfo is None or self.target_at.utcoffset() != timedelta(0):
+            raise PredictionDataError("invalid_runtime_input", "runtime target must be UTC")
+        if self.target_at.second or self.target_at.microsecond or self.target_at.minute % 5:
+            raise PredictionDataError(
+                "invalid_runtime_input", "runtime target must align to five-minute buckets"
+            )
+        if (
+            not math.isfinite(self.latest_occupancy_ratio)
+            or not 0 <= self.latest_occupancy_ratio <= 1
+        ):
+            raise PredictionDataError(
+                "invalid_runtime_input", "latest occupancy ratio must be within [0, 1]"
+            )
+        inputs.setflags(write=False)
+        object.__setattr__(self, "inputs", inputs)
+
+
 def parse_utc_timestamp(value: str, field: str) -> datetime:
     """Parse an ISO-8601 timestamp, require an offset, and normalize it to UTC."""
     try:
@@ -382,6 +413,64 @@ def _partition_ended_at(
     )
 
 
+def _timeline_identity(timeline: tuple[FeatureBucket | None, ...]) -> tuple[object, ...]:
+    """Return a privacy-safe canonical identity for shared feature values."""
+    return tuple(
+        None
+        if bucket is None
+        else (bucket.timestamp.isoformat(), tuple(float(value) for value in bucket.values))
+        for bucket in timeline
+    )
+
+
+def build_runtime_input(source: PredictionSourceData, dataset: PreparedDataset) -> RuntimeInput:
+    """Create the next-bucket input from shared aggregation and the frozen dataset scaler."""
+    if not isinstance(dataset, PreparedDataset):
+        raise PredictionDataError("invalid_runtime_input", "runtime requires one PreparedDataset")
+    if (
+        dataset.feature_names != FEATURE_NAMES
+        or dataset.target_name != TARGET_NAME
+        or dataset.config.interval_minutes != 5
+        or dataset.config.lookback_steps != 12
+        or dataset.config.horizon_steps != 1
+        or dataset.slot_count != source.slot_count
+    ):
+        raise PredictionDataError(
+            "invalid_runtime_input", "prepared dataset does not match the fixed prediction contract"
+        )
+    timeline = build_feature_timeline(source, dataset.config)
+    latest_index = next(
+        (index for index in range(len(timeline) - 1, -1, -1) if timeline[index] is not None),
+        None,
+    )
+    if latest_index is None:
+        raise PredictionDataError(
+            "insufficient_history", "no resolved prediction buckets are available"
+        )
+    start = latest_index - dataset.config.lookback_steps + 1
+    if start < 0:
+        raise PredictionDataError(
+            "insufficient_history", "not enough complete buckets for runtime prediction"
+        )
+    window = timeline[start : latest_index + 1]
+    if len(window) != dataset.config.lookback_steps or any(bucket is None for bucket in window):
+        raise PredictionDataError(
+            "insufficient_history", "runtime history contains an unresolved bucket"
+        )
+    resolved = cast(tuple[FeatureBucket, ...], window)
+    inputs = np.asarray([tuple(bucket.values for bucket in resolved)], dtype=np.float64)
+    indices = dataset.scaler.feature_indices
+    means = np.asarray(dataset.scaler.means, dtype=np.float64)
+    scales = np.asarray(dataset.scaler.scales, dtype=np.float64)
+    inputs[:, :, indices] = (inputs[:, :, indices] - means) / scales
+    latest = resolved[-1]
+    return RuntimeInput(
+        inputs=inputs,
+        target_at=latest.timestamp + timedelta(minutes=dataset.config.interval_minutes),
+        latest_occupancy_ratio=latest.values[FEATURE_NAMES.index("occupancy_ratio")],
+    )
+
+
 def prepare_prediction_dataset(
     source: PredictionSourceData, config: PreprocessingConfig | None = None
 ) -> PreparedDataset:
@@ -441,6 +530,7 @@ def prepare_prediction_dataset(
         "source_ended_at": source_ended_at.isoformat(),
         "train_ended_at": train_ended_at.isoformat(),
         "validation_ended_at": validation_ended_at.isoformat(),
+        "timeline": _timeline_identity(timeline),
     }
     canonical_json = json.dumps(identity, sort_keys=True, separators=(",", ":"))
     split_id = hashlib.sha256(canonical_json.encode("utf-8")).hexdigest()

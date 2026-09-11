@@ -25,6 +25,13 @@ from prediction.models import (
     PredictionSourceData,
     SessionRecord,
 )
+from prediction.training import (
+    EvaluationMetrics,
+    ModelFamily,
+    PersistedPredictionRun,
+    PredictionTrainingError,
+    TrainingResult,
+)
 
 PARKING_SLOTS_SCHEMA = """
 CREATE TABLE IF NOT EXISTS parking_slots (
@@ -757,6 +764,98 @@ class Database:
             )
             for row in rows
         ]
+
+    def save_prediction_results(self, results: Sequence[TrainingResult]) -> None:
+        """Atomically persist only artifact manifests that validate from disk."""
+        from prediction.artifacts import load_manifest
+
+        resolved = tuple(results)
+        if not resolved or any(not isinstance(result, TrainingResult) for result in resolved):
+            raise PredictionTrainingError(
+                "invalid_manifest", "prediction persistence requires completed training results"
+            )
+        rows: list[tuple[object, ...]] = []
+        for result in resolved:
+            manifest = load_manifest(result.manifest_path)
+            manifest_filename = result.manifest_path.name
+            if (
+                Path(manifest_filename).name != manifest_filename
+                or not manifest_filename.endswith(".json")
+            ):
+                raise PredictionTrainingError(
+                    "invalid_manifest", "manifest filename must be a safe basename"
+                )
+            if (
+                manifest.model != result.model
+                or manifest.split_id != result.split_id
+                or manifest.mae != result.metrics.mae
+                or manifest.mse != result.metrics.mse
+                or manifest.rmse != result.metrics.rmse
+                or manifest.inference_latency_ms != result.metrics.inference_latency_ms
+            ):
+                raise PredictionTrainingError(
+                    "invalid_manifest", "training result does not match its validated manifest"
+                )
+            rows.append(
+                (
+                    manifest.model.value,
+                    manifest.split_id,
+                    manifest.mae,
+                    manifest.rmse,
+                    manifest.mse,
+                    manifest.inference_latency_ms,
+                    json.dumps(
+                        {**manifest.as_dict(), "manifest_filename": manifest_filename},
+                        sort_keys=True,
+                        separators=(",", ":"),
+                    ),
+                )
+            )
+        with self.connect() as connection:
+            connection.executemany(
+                """
+                INSERT INTO prediction_runs (
+                    model, split_id, mae, rmse, mse, inference_latency_ms, artifact_metadata
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                rows,
+            )
+
+    def list_prediction_results(self) -> list[PersistedPredictionRun]:
+        with self.connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT model, split_id, mae, rmse, mse, inference_latency_ms,
+                       artifact_metadata, created_at
+                FROM prediction_runs ORDER BY id DESC
+                """
+            ).fetchall()
+        persisted: list[PersistedPredictionRun] = []
+        for row in rows:
+            try:
+                metadata = json.loads(row["artifact_metadata"])
+                artifact_sha256 = metadata["artifact_sha256"]
+                model = ModelFamily(row["model"])
+            except (KeyError, TypeError, ValueError, json.JSONDecodeError) as error:
+                raise PredictionTrainingError(
+                    "invalid_manifest", "persisted prediction metadata is invalid"
+                ) from error
+            persisted.append(
+                PersistedPredictionRun(
+                    model=model,
+                    split_id=str(row["split_id"]),
+                    metrics=EvaluationMetrics(
+                        mae=float(row["mae"]),
+                        mse=float(row["mse"]),
+                        rmse=float(row["rmse"]),
+                        inference_latency_ms=float(row["inference_latency_ms"]),
+                    ),
+                    artifact_sha256=str(artifact_sha256),
+                    artifact_metadata=metadata,
+                    created_at=str(row["created_at"]),
+                )
+            )
+        return persisted
 
     @staticmethod
     def _encode_seed(seed: int) -> str:

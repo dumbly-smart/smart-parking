@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+from pathlib import Path
+
+import scripts.train_prediction_models as train_script
+from backend.app.db import Database
+from prediction.training import EvaluationMetrics, ModelFamily, TrainingResult
 from scripts.seed_prediction_demo_data import main
 from scripts.train_prediction_models import main as train_main
 
@@ -33,3 +38,24 @@ def test_train_command_reports_actionable_missing_ml_dependency(tmp_path, capsys
     captured = capsys.readouterr()
     assert exit_code == 2
     assert ".[ml]" in captured.err
+
+
+def test_train_command_persists_completed_comparison_after_training(tmp_path, monkeypatch) -> None:
+    database_url = f"sqlite:///{tmp_path / 'prediction-demo.db'}"
+    assert main(["--database-url", database_url, "--days", "7", "--seed", "11"]) == 0
+    result = TrainingResult(
+        model=ModelFamily.GRU,
+        split_id="a" * 64,
+        metrics=EvaluationMetrics(mae=0.1, mse=0.02, rmse=0.14, inference_latency_ms=1.0),
+        manifest_path=Path("artifact.json"),
+    )
+    saved: list[object] = []
+
+    monkeypatch.setattr(train_script, "compare_models", lambda *_: (result,))
+    monkeypatch.setattr(Database, "save_prediction_results", lambda _, rows: saved.extend(rows))
+
+    assert train_script.main(
+        ["--database-url", database_url, "--artifact-directory", str(tmp_path / "artifacts")]
+    ) == 0
+
+    assert saved == [result]
