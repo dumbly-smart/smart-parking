@@ -105,3 +105,45 @@ def test_dashboard_serves_safe_bootstrap_and_assets(tmp_path: Path) -> None:
     }
     assert stylesheet.status_code == 200
     assert javascript.status_code == 200
+
+
+def test_dashboard_supports_dynamic_slots_and_uses_privacy_safe_assets(
+    tmp_path: Path,
+) -> None:
+    settings = make_settings(tmp_path, slot_ids=(9, 2, 14))
+
+    with TestClient(create_app(settings)) as client:
+        entered = client.post(
+            "/api/vehicle/entry",
+            json={"rfid_uid": "CARD-PRIVATE", "idempotency_key": "entry-1"},
+        )
+        status = client.get("/api/parking/status")
+        page = client.get("/dashboard")
+        javascript = client.get("/static/dashboard.js")
+
+    assert entered.status_code == 200
+    assert [slot["id"] for slot in status.json()["slots"]] == [9, 2, 14]
+    assert 'id="slot-grid"' in page.text
+    assert "CARD-PRIVATE" not in page.text
+    assert "rfid" not in (page.text + javascript.text).lower()
+
+
+def test_dashboard_data_apis_remain_compatible_with_prediction_fallback(
+    tmp_path: Path,
+) -> None:
+    settings = make_settings(tmp_path, slot_ids=(4, 8))
+
+    with TestClient(create_app(settings)) as client:
+        status = client.get("/api/parking/status")
+        optimizers = client.get("/api/benchmarks/optimizers")
+        predictors = client.get("/api/benchmarks/predictors")
+        prediction = client.get("/api/prediction")
+
+    assert status.status_code == 200
+    assert len(status.json()["slots"]) == 2
+    assert optimizers.json() == {"runs": []}
+    assert predictors.json() == {"runs": []}
+    assert prediction.status_code == 200
+    assert prediction.json()["model"] == "baseline"
+    assert prediction.json()["fallback_reason"] == "insufficient_history"
+    assert prediction.json()["target_at"]

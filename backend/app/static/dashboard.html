@@ -9,8 +9,79 @@
     <script src="/static/dashboard.js" defer></script>
   </head>
   <body>
-    <main>
-      <h1>Smart Parking</h1>
+    <main class="dashboard-shell">
+      <header class="masthead">
+        <div>
+          <p class="eyebrow">Operations console</p>
+          <h1>Smart Parking</h1>
+        </div>
+        <p id="refresh-status" class="refresh-status" role="status">Loading live data…</p>
+      </header>
+
+      <p id="dashboard-error" class="dashboard-error" role="alert" hidden></p>
+
+      <section class="summary-grid" aria-label="Current configuration and forecast">
+        <article class="summary-card">
+          <p class="label">Selected optimizer</p>
+          <p id="selected-optimizer" class="summary-value">—</p>
+        </article>
+        <article class="summary-card">
+          <p class="label">Selected predictor</p>
+          <p id="selected-predictor" class="summary-value">—</p>
+        </article>
+        <article class="summary-card">
+          <p class="label">Live occupancy</p>
+          <p id="occupancy-summary" class="summary-value">—</p>
+        </article>
+      </section>
+
+      <section class="panel" aria-labelledby="forecast-heading">
+        <div class="panel-heading">
+          <div>
+            <p class="eyebrow">Next five-minute bucket</p>
+            <h2 id="forecast-heading">Occupancy forecast</h2>
+          </div>
+          <p id="forecast-model" class="pill">—</p>
+        </div>
+        <dl class="forecast-details">
+          <div><dt>Predicted occupancy</dt><dd id="forecast-occupancy">—</dd></div>
+          <div><dt>Forecast target</dt><dd id="forecast-target">—</dd></div>
+          <div><dt>Runtime state</dt><dd id="forecast-fallback">—</dd></div>
+        </dl>
+      </section>
+
+      <section class="panel" aria-labelledby="slots-heading">
+        <div class="panel-heading">
+          <div>
+            <p class="eyebrow">Configuration-driven</p>
+            <h2 id="slots-heading">Parking slots</h2>
+          </div>
+        </div>
+        <div id="slot-grid" class="slot-grid" aria-live="polite"></div>
+      </section>
+
+      <section class="comparison-grid" aria-label="Benchmark comparisons">
+        <article class="panel comparison-panel">
+          <div class="panel-heading"><h2>Optimizer comparison</h2></div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Algorithm</th><th>Slot</th><th>Cost</th><th>Iterations</th><th>Runtime</th></tr></thead>
+              <tbody id="optimizer-runs"></tbody>
+            </table>
+          </div>
+          <p id="optimizer-empty" class="empty-state" hidden>No optimizer runs yet.</p>
+        </article>
+        <article class="panel comparison-panel">
+          <div class="panel-heading"><h2>Predictor comparison</h2></div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Model</th><th>MAE</th><th>MSE</th><th>RMSE</th><th>Latency</th></tr></thead>
+              <tbody id="predictor-runs"></tbody>
+            </table>
+          </div>
+          <p id="predictor-empty" class="empty-state" hidden>No trained predictor benchmarks yet.</p>
+        </article>
+      </section>
     </main>
   </body>
 </html>
