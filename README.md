@@ -27,6 +27,14 @@ make run
 Open `http://127.0.0.1:8000/health`. The first startup creates the local SQLite
 database and idempotently seeds every slot from `config/parking.yaml`.
 
+Open `http://127.0.0.1:8000/dashboard` for the framework-free operations
+dashboard. It polls the existing parking-status, optimizer-benchmark,
+predictor-benchmark, and prediction APIs; slot cards are rendered from the
+configured status response, so deployments are not limited to the five-slot
+demo. The page shows selected optimizer/predictor settings, live occupancy,
+comparison tables, forecast target time, and stable prediction fallback state.
+It deliberately does not display RFID or session identifiers.
+
 Copy `.env.example` to `.env` to override local configuration. Hardware mode
 requires both `SMART_PARKING_MODE=hardware` and
 `SMART_PARKING_HARDWARE_ENABLED=true`, preventing accidental physical-mode
@@ -205,3 +213,29 @@ GRU is the recommended affordable deployment candidate because it has fewer
 gates than LSTM and far less attention overhead than the Transformer for this
 short twelve-step history. Final selection should still use the measured
 quality and latency report produced on the target machine.
+
+## Simulated end-to-end demo
+
+Seed deterministic history, start the API, then run the demo client in a second
+terminal:
+
+```bash
+.venv/bin/python -m scripts.seed_prediction_demo_data \
+  --database-url sqlite:///./data/parking.db \
+  --dataset-key dashboard-demo \
+  --seed 20260912 \
+  --days 14
+
+make run
+
+.venv/bin/python -m scripts.run_simulated_demo \
+  --base-url http://127.0.0.1:8000 \
+  --rfid-uid DEMO-CARD-001 \
+  --idempotency-key dashboard-demo-entry-001
+```
+
+The client sends three deterministic synthetic JPEG frames through the existing
+camera endpoint, creates one simulated lifecycle entry, runs the existing
+optimizer comparison, reads the prediction, and prints a privacy-safe JSON
+summary. Its output omits the RFID value; refresh `/dashboard` to observe the
+resulting slot state and comparison data.
