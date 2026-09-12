@@ -29,6 +29,9 @@ ml = ["tensorflow>=2.20,<3"]
 [tool.setuptools.packages.find]
 include = ["backend*", "optimization*", "prediction*", "vision*"]
 
+[tool.setuptools.package-data]
+"backend.app" = ["static/*.css", "static/*.html", "static/*.js"]
+
 [tool.pytest.ini_options]
 addopts = "-ra --strict-markers"
 testpaths = ["tests"]

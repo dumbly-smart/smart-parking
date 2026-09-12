@@ -4,11 +4,14 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from backend.app.config import Settings
 from backend.app.db import Database
 from backend.app.routes.allocation import router as allocation_router
+from backend.app.routes.dashboard import STATIC_DIRECTORY
+from backend.app.routes.dashboard import router as dashboard_router
 from backend.app.routes.occupancy import router as occupancy_router
 from backend.app.routes.parking import router as parking_router
 from backend.app.routes.prediction import router as prediction_router
@@ -59,7 +62,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         yield
 
     application = FastAPI(title="Smart Parking API", version="0.1.0", lifespan=lifespan)
+    application.mount("/static", StaticFiles(directory=STATIC_DIRECTORY), name="static")
     application.include_router(allocation_router)
+    application.include_router(dashboard_router)
     application.include_router(occupancy_router)
     application.include_router(parking_router)
     application.include_router(prediction_router)

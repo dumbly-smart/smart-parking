@@ -1,12 +1,13 @@
 # Smart Parking Project Progress
 
-Last updated: 2026-09-11
+Last updated: 2026-09-12
 
 ## Current Status
 
-Prediction comparison is complete. Shared preprocessing, deterministic demo
-history, common LSTM/GRU/Transformer training, evaluation, schema-v2 artifact
-contracts, atomic comparison persistence, and runtime/comparison APIs are
+The framework-free dashboard and hardware-independent end-to-end demo are
+complete. Shared preprocessing, deterministic demo history, common
+LSTM/GRU/Transformer training, evaluation, schema-v2 artifact contracts, atomic
+comparison persistence, runtime/comparison APIs, and live dashboard views are
 implemented.
 
 ## Milestones
@@ -23,11 +24,28 @@ implemented.
 | Parking lifecycle API | Complete | 23 focused and 49 full tests pass; RFID lifecycle is atomic and retry-safe |
 | Vision occupancy pipeline | Complete | 22 focused and 90 full tests pass; dynamic slots, ROI heuristic, smoothing, persistence, and JPEG API work |
 | Prediction comparison | Complete | 116 focused prediction tests and 218 full tests pass; persisted comparisons and guarded runtime forecasts work without TensorFlow installed |
-| Dashboard | Not started | Live five-slot state and both comparison tables are visible |
+| Dashboard | Complete | Dynamic live slots, selected settings, forecast state, and both comparison tables are served at `/dashboard` without RFID rendering |
 | Firmware integration | Not started | Both sketches build and complete the documented hardware flow |
-| End-to-end demo | Not started | Seed, simulated camera, RFID entry, allocation, prediction, and UI run without hardware |
+| End-to-end demo | Complete | Seeded history plus synthetic camera frames, lifecycle entry, allocation comparison, prediction, and dashboard APIs run through the documented simulator without hardware |
 
 ## Completed This Session
+
+- Added a framework-free FastAPI dashboard route and static HTML/CSS/JavaScript
+  assets. It renders every configured slot dynamically from parking-status data,
+  shows selected optimizer/predictor settings, live occupancy, forecast target
+  and fallback state, and persisted optimizer/predictor comparisons.
+- Kept dashboard state privacy-safe: only selected settings are bootstrapped;
+  dashboard assets do not render RFID or active-session identifiers, and the
+  established prediction/comparison APIs remain unchanged.
+- Added `scripts.run_simulated_demo`, which sends three deterministic synthetic
+  JPEG frames to the existing camera API, enters a simulated vehicle, runs all
+  optimizers on status-derived candidates, reads the prediction, and prints a
+  RFID-free summary. Documented the seed/start/dashboard/demo sequence.
+- Added focused route, API integration, dynamic-slot, fallback, demo HTTP
+  sequence, multipart-camera, RFID-redaction, and installed-wheel static-asset
+  coverage. Verified 5 focused tests and 223 full tests pass; 3 optional TensorFlow tests skip because
+  TensorFlow is not installed. Ruff and `git diff --check` pass. The two
+  FastAPI/Starlette warnings remain dependency deprecations.
 
 - Added schema-v2 prediction manifests with the frozen non-RFID scaler
   contract, a privacy-safe feature-timeline `split_id`, and runtime validation
@@ -136,8 +154,8 @@ implemented.
 
 ## Next Task
 
-Implement the framework-free dashboard using the completed parking,
-optimizer-comparison, and predictor-comparison APIs.
+Implement firmware integration, including the documented controller and camera
+hardware flow.
 
 ## Blockers
 
