@@ -42,8 +42,8 @@ implemented.
   optimizers on status-derived candidates, reads the prediction, and prints a
   RFID-free summary. Documented the seed/start/dashboard/demo sequence.
 - Added focused route, API integration, dynamic-slot, fallback, demo HTTP
-  sequence, multipart-camera, and RFID-redaction coverage. Verified 4 focused
-  tests and 222 full tests pass; 3 optional TensorFlow tests skip because
+  sequence, multipart-camera, RFID-redaction, and installed-wheel static-asset
+  coverage. Verified 5 focused tests and 223 full tests pass; 3 optional TensorFlow tests skip because
   TensorFlow is not installed. Ruff and `git diff --check` pass. The two
   FastAPI/Starlette warnings remain dependency deprecations.
 
