@@ -19,7 +19,7 @@
   ],
   "results": [
     {
-      "inference_latency_ms": 1.4870370370370371e-05,
+      "inference_latency_ms": 1.451178451178451e-05,
       "mae": 0.12087542087542087,
       "manifest_path": "N/A",
       "model": "persistence_baseline",
@@ -28,7 +28,7 @@
       "rmse": 0.1691730729741841
     },
     {
-      "inference_latency_ms": 0.22031385016835014,
+      "inference_latency_ms": 0.24590969865319864,
       "mae": 0.10406229091864644,
       "manifest_path": "artifacts/prediction/lstm-51ba3a4904da-20260908.json",
       "model": "lstm",
@@ -37,7 +37,7 @@
       "rmse": 0.12968504968632855
     },
     {
-      "inference_latency_ms": 0.22491707239057238,
+      "inference_latency_ms": 0.22378301346801346,
       "mae": 0.09805470040375336,
       "manifest_path": "artifacts/prediction/gru-51ba3a4904da-20260908.json",
       "model": "gru",
@@ -46,7 +46,7 @@
       "rmse": 0.11786196165672314
     },
     {
-      "inference_latency_ms": 0.23296437373737375,
+      "inference_latency_ms": 0.23245132154882156,
       "mae": 0.10917254401377155,
       "manifest_path": "artifacts/prediction/transformer-51ba3a4904da-20260908.json",
       "model": "transformer",

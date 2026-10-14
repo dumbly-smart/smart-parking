@@ -9,6 +9,7 @@ from backend.app.config import Settings
 from backend.app.db import Database
 from prediction.demo_data import DemoDataConfig, replace_prediction_demo_data
 from scripts.create_review_dataset import DATASET_KEY, DAYS, SEED, START_AT, export_dataset
+from scripts.package_prediction_artifacts import package
 from scripts.run_optimizer_benchmarks import _scenario
 
 
@@ -65,3 +66,35 @@ def test_optimizer_scenarios_are_seeded_and_share_normalized_candidates() -> Non
             item.fairness,
         )
     )
+
+
+def test_model_package_contains_only_hash_verified_models_and_manifests(tmp_path) -> None:
+    artifacts = tmp_path / "artifacts"
+    artifacts.mkdir()
+    split_id = "a" * 64
+    for model in ("lstm", "gru", "transformer"):
+        model_bytes = f"real-{model}-payload".encode()
+        digest = hashlib.sha256(model_bytes).hexdigest()
+        filename = f"{model}.keras"
+        (artifacts / filename).write_bytes(model_bytes)
+        (artifacts / f"{model}-run.json").write_text(
+            json.dumps(
+                {
+                    "model": model,
+                    "artifact_filename": filename,
+                    "artifact_sha256": digest,
+                    "split_id": split_id,
+                }
+            ),
+            encoding="utf-8",
+        )
+
+    output = package(artifacts, tmp_path / "models.zip")
+    with zipfile.ZipFile(output) as archive:
+        assert archive.testzip() is None
+        index = json.loads(archive.read("artifact_index.json"))
+        assert {entry["model"] for entry in index} == {"lstm", "gru", "transformer"}
+        assert all(
+            f"manifests/{model}-run.json" in archive.namelist()
+            for model in ("lstm", "gru", "transformer")
+        )

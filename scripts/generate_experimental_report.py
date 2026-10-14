@@ -11,6 +11,9 @@ ROOT = Path("review_outputs/2026-10-15")
 DATASET_DRIVE_URL = (
     "https://drive.google.com/file/d/1-bgCGNuCgbhWTbKyxnMlLpOQH1s3lxSZ/view?usp=drivesdk"
 )
+MODEL_ARTIFACT_DRIVE_URL = (
+    "https://drive.google.com/file/d/1I1ECMeYlJT9-oop4Bh-Qedgti9Kds6lj/view?usp=drivesdk"
+)
 
 
 def _read_csv(path: Path) -> list[dict[str, str]]:
@@ -75,6 +78,8 @@ def generate(root: Path) -> None:
                 f"Lowest measured MAE: **{best['model']}** ({float(best['mae']):.6f}). This ranking applies to the generated data and this execution environment only.",  # noqa: E501
                 "",
                 "Artifacts were reloaded and hash/manifest checked. The configured `/api/prediction` endpoint returned neural predictions without fallback for each family. These are server-side results; no ESP32 or other microcontroller inference was measured.",  # noqa: E501
+                "Model ZIP with weights, manifests, results, and checksums: "
+                f"[download]({MODEL_ARTIFACT_DRIVE_URL}) (read-only access for `vit.ac.in`).",
             ]
         )
     else:
@@ -111,7 +116,7 @@ def generate(root: Path) -> None:
             "",
             "## Reproduction and outputs",
             "",
-            "Run `make review` to regenerate the dataset, ML artifacts and metrics, optimizer tables and figures, and this report. See `REPRODUCE.md` for individual commands.",  # noqa: E501
+            "Run `make review` to regenerate the dataset, ML artifacts and metrics, verified model ZIP, optimizer tables and figures, and this report. See `REPRODUCE.md` for individual commands.",  # noqa: E501
             "",
         ]
     )

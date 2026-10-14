@@ -18,13 +18,14 @@ All models share the same prepared dataset and untouched chronological test spli
 | Model | MAE | MSE | RMSE | Median latency (ms) | Model size (bytes) |
 | --- | ---: | ---: | ---: | ---: | ---: |
 | persistence_baseline | 0.120875 | 0.028620 | 0.169173 | 0.000015 | N/A |
-| lstm | 0.104062 | 0.016818 | 0.129685 | 0.220314 | 60481 |
-| gru | 0.098055 | 0.013891 | 0.117862 | 0.224917 | 52615 |
-| transformer | 0.109173 | 0.018098 | 0.134531 | 0.232964 | 110684 |
+| lstm | 0.104062 | 0.016818 | 0.129685 | 0.245910 | 60481 |
+| gru | 0.098055 | 0.013891 | 0.117862 | 0.223783 | 52615 |
+| transformer | 0.109173 | 0.018098 | 0.134531 | 0.232451 | 110684 |
 
 Lowest measured MAE: **gru** (0.098055). This ranking applies to the generated data and this execution environment only.
 
 Artifacts were reloaded and hash/manifest checked. The configured `/api/prediction` endpoint returned neural predictions without fallback for each family. These are server-side results; no ESP32 or other microcontroller inference was measured.
+Model ZIP with weights, manifests, results, and checksums: [download](https://drive.google.com/file/d/1I1ECMeYlJT9-oop4Bh-Qedgti9Kds6lj/view?usp=drivesdk) (read-only access for `vit.ac.in`).
 
 ## Allocation optimizer experiments
 
@@ -44,4 +45,4 @@ These runs measure a simulated one-slot objective and Python software runtime. T
 
 ## Reproduction and outputs
 
-Run `make review` to regenerate the dataset, ML artifacts and metrics, optimizer tables and figures, and this report. See `REPRODUCE.md` for individual commands.
+Run `make review` to regenerate the dataset, ML artifacts and metrics, verified model ZIP, optimizer tables and figures, and this report. See `REPRODUCE.md` for individual commands.
