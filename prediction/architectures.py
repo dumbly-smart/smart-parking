@@ -54,6 +54,9 @@ def _transformer_model(tf: Any, config: TrainingConfig, input_shape: tuple[int, 
         output_dim=config.transformer_width,
         name="position_embedding",
     )(positions)
+    # Give the learned (time, width) table an explicit singleton batch axis.
+    # Keras Add otherwise expands the rank-2 tensor on the time axis at runtime.
+    position_values = tf.keras.ops.expand_dims(position_values, axis=0)
     encoded = tf.keras.layers.Add()([projected, position_values])
     attended = tf.keras.layers.MultiHeadAttention(
         num_heads=config.transformer_heads,

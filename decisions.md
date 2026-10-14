@@ -286,3 +286,35 @@ Runtime forecasts cannot accidentally use a changed source snapshot or scaler.
 No raw source rows or RFID identifiers are stored in the manifest or exposed
 through APIs. Older artifacts safely degrade to the deterministic baseline
 until retrained under schema v2.
+
+## ADR-013: Reproducible academic review experiments use isolated synthetic data
+
+- Date: 2026-10-14
+- Status: Accepted
+
+### Context
+
+The final project review needs portable dataset exports, genuine model
+comparison results, and controlled optimizer measurements without replacing
+the working application database or presenting simulated observations as real
+measurements.
+
+### Decision
+
+Generate the review corpus in a dedicated dated SQLite database using the
+existing demo-data and feature-timeline implementations. Make sampled
+occupancy agree with active sessions and slot state, and persist all four
+configured allocation objective components. Export only privacy-safe source
+observations and the shared chronological feature timeline. Use the existing
+prepared prediction split for all model families. Compare allocation
+heuristics on identical seeded scenarios against first-available and
+exhaustive-search references, recording full-capacity rejections separately.
+
+### Consequences
+
+Review outputs are reproducible and isolated from application records. Their
+metrics describe synthetic scenarios and server execution only; they do not
+claim measured site performance, physical throughput, or microcontroller
+inference. Negative finite scaler means are valid because centered continuous
+features can have signed training averages; scaler values still must be finite
+and scales must remain positive.

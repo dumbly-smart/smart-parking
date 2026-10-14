@@ -204,9 +204,7 @@ def test_build_model_reports_actionable_missing_tensorflow(monkeypatch) -> None:
 @pytest.mark.skipif(find_spec("tensorflow") is None, reason="TensorFlow is not installed")
 @pytest.mark.parametrize("model", list(ModelFamily))
 def test_real_architectures_emit_one_bounded_scalar(model: ModelFamily) -> None:
-    built = architectures.build_model(
-        TrainingConfig(model=model), (12, len(FEATURE_NAMES))
-    )
+    built = architectures.build_model(TrainingConfig(model=model), (12, len(FEATURE_NAMES)))
     outputs = built(np.zeros((2, 12, len(FEATURE_NAMES))), training=False).numpy()
 
     assert outputs.shape == (2, 1)
@@ -256,6 +254,27 @@ def test_manifest_loader_rejects_dataset_with_different_fitted_scaler(tmp_path) 
         load_manifest(manifest_path, expected_dataset=incompatible)
 
     assert raised.value.code == "invalid_manifest"
+
+
+def test_manifest_loader_accepts_finite_negative_scaler_means(tmp_path) -> None:
+    dataset = prepared_dataset()
+    means = list(dataset.scaler.means)
+    means[1] = -0.125
+    signed_dataset = replace(
+        dataset,
+        scaler=ScalerMetadata(
+            feature_indices=dataset.scaler.feature_indices,
+            means=tuple(means),
+            scales=dataset.scaler.scales,
+        ),
+    )
+    manifest_path = publish_artifact(
+        ByteSavingModel(), signed_dataset, TrainingConfig(), completed_metrics(), tmp_path
+    )
+
+    manifest = load_manifest(manifest_path, expected_dataset=signed_dataset)
+
+    assert manifest.scaler_means[1] == -0.125
 
 
 def test_prediction_results_persist_validated_manifest_summaries(tmp_path) -> None:
@@ -454,8 +473,6 @@ def test_comparison_rejects_missing_or_duplicate_model_configs(tmp_path, configs
 def test_comparison_returns_fixed_order_for_unordered_configs(tmp_path) -> None:
     configs = tuple(reversed(default_comparison_configs()))
 
-    results = compare_models(
-        prepared_dataset(), configs, tmp_path, _backend=RecordingBackend()
-    )
+    results = compare_models(prepared_dataset(), configs, tmp_path, _backend=RecordingBackend())
 
     assert [result.model for result in results] == list(ModelFamily)

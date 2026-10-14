@@ -65,10 +65,13 @@ def test_replacement_preserves_unowned_rows_and_does_not_accumulate(tmp_path) ->
         assert connection.execute("SELECT COUNT(*) FROM context_samples").fetchone()[0] == (
             first.context_samples + 1
         )
-        assert connection.execute(
-            "SELECT occupancy_count FROM context_samples WHERE sampled_at = ?",
-            ("2026-07-31T23:55:00Z",),
-        ).fetchone()[0] == 1
+        assert (
+            connection.execute(
+                "SELECT occupancy_count FROM context_samples WHERE sampled_at = ?",
+                ("2026-07-31T23:55:00Z",),
+            ).fetchone()[0]
+            == 1
+        )
 
 
 def test_seed_changes_generated_values_and_all_feature_families_are_present(tmp_path) -> None:
@@ -97,19 +100,29 @@ def test_seed_changes_generated_values_and_all_feature_families_are_present(tmp_
     assert any(value[26] == 1.0 for value in values)
 
 
-def test_generated_sessions_are_completed_and_context_occupancy_is_bounded(tmp_path) -> None:
+def test_generated_context_occupancy_matches_sessions_and_slot_state(tmp_path) -> None:
     database = initialized_database(tmp_path)
     summary = replace_prediction_demo_data(
         database, DemoDataConfig(dataset_key="demo", seed=11, start_at=START, days=7)
     )
 
     with database.connect() as connection:
-        assert connection.execute(
-            "SELECT COUNT(*) FROM parking_sessions WHERE exited_at IS NULL"
-        ).fetchone()[0] == 0
-        assert connection.execute(
-            "SELECT COUNT(*) FROM context_samples WHERE occupancy_count > 3"
-        ).fetchone()[0] == 0
+        samples = connection.execute(
+            "SELECT occupancy_count, sampled_at FROM context_samples ORDER BY sampled_at"
+        ).fetchall()
+        for sample in samples:
+            active = connection.execute(
+                """SELECT COUNT(*) FROM parking_sessions
+                   WHERE entered_at <= ? AND (exited_at IS NULL OR exited_at > ?)""",
+                (sample["sampled_at"], sample["sampled_at"]),
+            ).fetchone()[0]
+            assert active == sample["occupancy_count"]
+        assert (
+            connection.execute(
+                "SELECT COUNT(*) FROM context_samples WHERE occupancy_count > 3"
+            ).fetchone()[0]
+            == 0
+        )
         assert (
             connection.execute("SELECT COUNT(*) FROM allocations").fetchone()[0]
             == summary.allocations
@@ -117,6 +130,31 @@ def test_generated_sessions_are_completed_and_context_occupancy_is_bounded(tmp_p
         assert connection.execute("SELECT COUNT(*) FROM optimizer_runs").fetchone()[0] == (
             summary.optimizer_runs
         )
+        active_slots = connection.execute(
+            "SELECT COUNT(*) FROM parking_slots WHERE occupied = 1"
+        ).fetchone()[0]
+        active_sessions = connection.execute(
+            "SELECT COUNT(*) FROM parking_sessions WHERE exited_at IS NULL"
+        ).fetchone()[0]
+        assert active_slots == active_sessions
+
+
+def test_seeder_rejects_unowned_occupied_slot_without_modifying_it(tmp_path) -> None:
+    database = initialized_database(tmp_path)
+    with database.connect() as connection:
+        connection.execute("UPDATE parking_slots SET occupied = 1 WHERE id = 2")
+
+    with pytest.raises(DemoDataError) as raised:
+        replace_prediction_demo_data(
+            database, DemoDataConfig(dataset_key="review", seed=11, start_at=START, days=1)
+        )
+
+    assert raised.value.code == "occupied_demo_database"
+    with database.connect() as connection:
+        assert (
+            connection.execute("SELECT occupied FROM parking_slots WHERE id = 2").fetchone()[0] == 1
+        )
+        assert connection.execute("SELECT COUNT(*) FROM context_samples").fetchone()[0] == 0
 
 
 def test_failed_replacement_rolls_back_previous_complete_dataset(tmp_path) -> None:

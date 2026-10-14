@@ -164,12 +164,13 @@ request.
 
 ## Prediction demo data and model comparison
 
-Seed fourteen days of deterministic five-minute history into an initialized
-SQLite database:
+Seed fourteen days of deterministic five-minute history into an initialized,
+dedicated SQLite database (the generator rejects unrelated active parking
+state):
 
 ```bash
 .venv/bin/python -m scripts.seed_prediction_demo_data \
-  --database-url sqlite:///./data/parking.db \
+  --database-url sqlite:///./data/prediction-demo.db \
   --dataset-key prediction-demo \
   --seed 20260908 \
   --days 14
@@ -213,6 +214,25 @@ GRU is the recommended affordable deployment candidate because it has fewer
 gates than LSTM and far less attention overhead than the Transformer for this
 short twelve-step history. Final selection should still use the measured
 quality and latency report produced on the target machine.
+
+## Academic review experiments
+
+Generate the dated simulated dataset, train and compare the three neural
+models against persistence, run GA/PSO/ACO benchmarks against first-available
+and exhaustive-search references, and assemble the report:
+
+```bash
+python -m pip install -e '.[dev,ml]'
+make review
+```
+
+The workflow uses a dedicated SQLite database under
+`review_outputs/2026-10-15/dataset/`, stores review CSV/JSON/PNG outputs and a
+shareable ZIP under the same dated directory, and leaves model binaries in the
+ignored `artifacts/prediction/`. `review_outputs/2026-10-15/REPRODUCE.md`
+documents each individual Make target. These observations are simulated and
+the reported inference timings are server measurements, not microcontroller
+benchmarks.
 
 ## Simulated end-to-end demo
 

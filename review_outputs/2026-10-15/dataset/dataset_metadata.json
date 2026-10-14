@@ -1,0 +1,133 @@
+{
+  "dataset_key": "academic-review-20261015",
+  "dataset_type": "synthetic simulated parking-system observations",
+  "feature_count": 27,
+  "feature_definitions": {
+    "active_session_count": "sessions active at interval end",
+    "allocation_count": "allocations recorded in the interval",
+    "allocation_present": "one when at least one allocation exists in the interval",
+    "entry_count/exit_count": "session starts/ends in the five-minute interval",
+    "holiday/event": "simulated binary calendar/event indicators",
+    "hour_sin/hour_cos": "cyclic local-clock position; timestamps are UTC",
+    "mean_walking_distance/mean_congestion/mean_fairness": "mean normalized allocation component, or zero without allocations",
+    "next_occupancy_ratio": "occupancy ratio in the next five-minute interval; last row has no future target",
+    "occupancy_change": "current occupancy ratio minus previous interval ratio",
+    "occupancy_mean_15m": "mean occupancy ratio over the last three intervals",
+    "occupancy_mean_60m": "mean occupancy ratio over the last twelve intervals",
+    "occupancy_ratio": "occupied slots divided by configured capacity",
+    "returning_vehicle_rate": "share of interval entries by previously observed vehicles",
+    "unique_vehicle_count": "distinct simulated vehicles represented by sessions in the interval",
+    "weather_*": "one-hot weather category indicators",
+    "weekday_sin/weekday_cos": "cyclic day-of-week position"
+  },
+  "feature_names": [
+    "occupancy_ratio",
+    "occupancy_change",
+    "occupancy_mean_15m",
+    "occupancy_mean_60m",
+    "hour_sin",
+    "hour_cos",
+    "weekday_sin",
+    "weekday_cos",
+    "weather_clear",
+    "weather_cloudy",
+    "weather_rain",
+    "weather_fog",
+    "weather_storm",
+    "weather_snow",
+    "weather_other",
+    "holiday",
+    "event",
+    "entry_count",
+    "exit_count",
+    "allocation_count",
+    "active_session_count",
+    "unique_vehicle_count",
+    "returning_vehicle_rate",
+    "mean_walking_distance",
+    "mean_congestion",
+    "mean_fairness",
+    "allocation_present"
+  ],
+  "horizon_intervals": 1,
+  "limitations": "All values are simulated. The generator models five configured slots and does not represent measured site demand, actual weather, camera accuracy, or physical throughput.",
+  "lookback_intervals": 12,
+  "origin": "prediction.demo_data deterministic generator; no real-world measurements",
+  "preprocessing": {
+    "bounded_features": "kept on the existing [0, 1] contract",
+    "continuous_features": "standardized using training partition statistics only",
+    "missing_values": "short gaps carried forward by existing feature builder; longer gaps remain missing and are excluded from examples",
+    "scaler": {
+      "feature_names": [
+        "occupancy_ratio",
+        "occupancy_change",
+        "occupancy_mean_15m",
+        "occupancy_mean_60m",
+        "entry_count",
+        "exit_count",
+        "allocation_count",
+        "active_session_count",
+        "unique_vehicle_count",
+        "returning_vehicle_rate",
+        "mean_walking_distance",
+        "mean_congestion",
+        "mean_fairness"
+      ],
+      "means": [
+        0.25740806642941877,
+        -1.7793594306049798e-05,
+        0.2574238829576908,
+        0.25746490707789643,
+        0.27431791221826807,
+        0.27440688018979836,
+        0.27431791221826807,
+        1.2870403321470938,
+        0.5487247924080664,
+        0.0,
+        0.1267378137307236,
+        0.1270674099940688,
+        0.12471807924080663
+      ],
+      "scales": [
+        0.2337956865360876,
+        0.16104271639619663,
+        0.2140796214670045,
+        0.20453941442865142,
+        0.4924266091116931,
+        0.5053073345019023,
+        0.4924266091116931,
+        1.168978432680438,
+        0.5892962096591746,
+        1.0,
+        0.2596054822349072,
+        0.2598386642882636,
+        0.255426768559581
+      ]
+    },
+    "sequence_counts": {
+      "test": 594,
+      "train": 2810,
+      "validation": 592
+    },
+    "split": "chronological 70% train / 15% validation / 15% test before window construction",
+    "split_id": "51ba3a4904da8444d180c753b28df27c62ce9907061736aad55182687668d5a6"
+  },
+  "privacy": "No RFID UID, vehicle ID, session ID, idempotency key, or secret is exported.",
+  "random_seed": 20260908,
+  "records": {
+    "feature_timeline": 4032,
+    "raw_observations": 6274
+  },
+  "reproduction": "Run `make review-dataset` from the repository root.",
+  "sampling_interval_minutes": 5,
+  "sha256": {
+    "parking_features.csv": "2b50600c4f3a9ad5cbff26caf9c60b48aa9f45f4991cf38bf80a06f8d2eb81cb",
+    "parking_raw.csv": "dfccc212322817a5f60443cf3b045b99cd8d9c857c1e27fecdeeb7ceba82089f"
+  },
+  "slot_count": 5,
+  "target": "next_occupancy_ratio",
+  "time_coverage_utc": {
+    "end": "2026-08-14T23:55:00Z",
+    "start": "2026-08-01T00:00:00Z"
+  }
+}

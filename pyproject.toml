@@ -24,7 +24,7 @@ dev = [
   "pytest-cov>=6.2,<8",
   "ruff>=0.12,<1",
 ]
-ml = ["tensorflow>=2.20,<3"]
+ml = ["tensorflow>=2.20,<3", "matplotlib>=3.10,<4"]
 
 [tool.setuptools.packages.find]
 include = ["backend*", "optimization*", "prediction*", "vision*"]

@@ -21,10 +21,22 @@ def test_seed_demo_command_reports_counts_without_rfid(tmp_path, capsys) -> None
     assert "demo-rfid" not in output
 
 
-def test_train_command_reports_actionable_missing_ml_dependency(tmp_path, capsys) -> None:
+def test_train_command_reports_actionable_missing_ml_dependency(
+    tmp_path, capsys, monkeypatch
+) -> None:
+    from prediction.training import PredictionTrainingError
+
     database_url = f"sqlite:///{tmp_path / 'prediction-demo.db'}"
     assert main(["--database-url", database_url, "--days", "1", "--seed", "11"]) == 0
     capsys.readouterr()
+
+    def missing_tensorflow():
+        raise PredictionTrainingError(
+            "missing_ml_dependency",
+            "TensorFlow is required for training; install it with pip install -e '.[ml]'",
+        )
+
+    monkeypatch.setattr("prediction.architectures._require_tensorflow", missing_tensorflow)
 
     exit_code = train_main(
         [
@@ -54,8 +66,11 @@ def test_train_command_persists_completed_comparison_after_training(tmp_path, mo
     monkeypatch.setattr(train_script, "compare_models", lambda *_: (result,))
     monkeypatch.setattr(Database, "save_prediction_results", lambda _, rows: saved.extend(rows))
 
-    assert train_script.main(
-        ["--database-url", database_url, "--artifact-directory", str(tmp_path / "artifacts")]
-    ) == 0
+    assert (
+        train_script.main(
+            ["--database-url", database_url, "--artifact-directory", str(tmp_path / "artifacts")]
+        )
+        == 0
+    )
 
     assert saved == [result]

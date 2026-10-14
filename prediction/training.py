@@ -2,7 +2,7 @@
 
 import math
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import StrEnum
 from numbers import Real
 from pathlib import Path
@@ -66,9 +66,7 @@ class TrainingConfig:
                 )
         for name in positive_integers:
             if getattr(self, name) <= 0:
-                raise PredictionTrainingError(
-                    "invalid_training_config", f"{name} must be positive"
-                )
+                raise PredictionTrainingError("invalid_training_config", f"{name} must be positive")
         if self.patience < 0:
             raise PredictionTrainingError(
                 "invalid_training_config", "patience must be non-negative"
@@ -108,6 +106,7 @@ class TrainingResult:
     split_id: str
     metrics: EvaluationMetrics
     manifest_path: Path
+    training_history: dict[str, tuple[float, ...]] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -131,7 +130,7 @@ class _TrainingBackend(Protocol):
         train: PreparedSplit,
         validation: PreparedSplit,
         config: TrainingConfig,
-    ) -> None: ...
+    ) -> dict[str, list[float]] | None: ...
 
     def predict(self, model: Any, inputs: np.ndarray) -> np.ndarray: ...
 
@@ -150,7 +149,7 @@ class _TensorFlowBackend:
         train: PreparedSplit,
         validation: PreparedSplit,
         config: TrainingConfig,
-    ) -> None:
+    ) -> dict[str, list[float]]:
         from prediction.architectures import _require_tensorflow
 
         tf = _require_tensorflow()
@@ -159,7 +158,7 @@ class _TensorFlowBackend:
             patience=config.patience,
             restore_best_weights=True,
         )
-        model.fit(
+        history = model.fit(
             train.inputs,
             train.targets,
             validation_data=(validation.inputs, validation.targets),
@@ -169,6 +168,7 @@ class _TensorFlowBackend:
             callbacks=[early_stopping],
             verbose=0,
         )
+        return history.history
 
     def predict(self, model: Any, inputs: np.ndarray) -> np.ndarray:
         return np.asarray(model.predict(inputs, verbose=0))
@@ -223,13 +223,11 @@ def train_model(
 
     _validate_dataset(dataset)
     if not isinstance(config, TrainingConfig):
-        raise PredictionTrainingError(
-            "invalid_training_config", "config must be a TrainingConfig"
-        )
+        raise PredictionTrainingError("invalid_training_config", "config must be a TrainingConfig")
     backend = _backend if _backend is not None else _TensorFlowBackend()
     try:
         model = backend.build(config, dataset)
-        backend.fit(model, dataset.train, dataset.validation, config)
+        history = backend.fit(model, dataset.train, dataset.validation, config) or {}
         predictions = backend.predict(model, dataset.test.inputs)
         quality = evaluate_predictions(predictions, dataset.test.targets)
         latency = measure_inference_latency(
@@ -258,7 +256,13 @@ def train_model(
         Path(artifact_directory),
         framework_versions=versions,
     )
-    return TrainingResult(config.model, dataset.split_id, metrics, manifest_path)
+    return TrainingResult(
+        config.model,
+        dataset.split_id,
+        metrics,
+        manifest_path,
+        {name: tuple(float(value) for value in values) for name, values in history.items()},
+    )
 
 
 def compare_models(

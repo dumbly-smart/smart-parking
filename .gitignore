@@ -50,3 +50,9 @@ Thumbs.db
 
 # Isolated development worktrees
 .worktrees/
+
+# graft's local graph cache — regenerable, not committed (run `graft build`).
+/graft/
+
+# Local wheel-build output created by package-data verification.
+/build/

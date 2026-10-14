@@ -103,6 +103,15 @@ def _is_finite_non_negative(value: object) -> bool:
     return math.isfinite(normalized) and normalized >= 0
 
 
+def _is_finite_number(value: object) -> bool:
+    if not isinstance(value, Real) or isinstance(value, bool):
+        return False
+    try:
+        return math.isfinite(float(value))
+    except (OverflowError, TypeError, ValueError):
+        return False
+
+
 def _build_manifest(
     artifact_filename: str,
     artifact_sha256: str,
@@ -330,13 +339,11 @@ def _validate_manifest_contract(manifest: ArtifactManifest) -> None:
             indices is None
             or means is None
             or scales is None
-            or indices != tuple(
-                FEATURE_NAMES.index(name) for name in CONTINUOUS_FEATURE_NAMES
-            )
+            or indices != tuple(FEATURE_NAMES.index(name) for name in CONTINUOUS_FEATURE_NAMES)
             or len(indices) != len(means)
             or len(means) != len(scales)
             or any(not isinstance(index, int) or isinstance(index, bool) for index in indices)
-            or any(not _is_finite_non_negative(mean) for mean in means)
+            or any(not _is_finite_number(mean) for mean in means)
             or any(not _is_finite_non_negative(scale) or float(scale) <= 0 for scale in scales)
         ):
             raise PredictionTrainingError("invalid_manifest", "runtime scaler is invalid")

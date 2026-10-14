@@ -1,6 +1,6 @@
 # Smart Parking Project Progress
 
-Last updated: 2026-09-12
+Last updated: 2026-10-14
 
 ## Current Status
 
@@ -27,6 +27,27 @@ implemented.
 | Dashboard | Complete | Dynamic live slots, selected settings, forecast state, and both comparison tables are served at `/dashboard` without RFID rendering |
 | Firmware integration | Not started | Both sketches build and complete the documented hardware flow |
 | End-to-end demo | Complete | Seeded history plus synthetic camera frames, lifecycle entry, allocation comparison, prediction, and dashboard APIs run through the documented simulator without hardware |
+| Academic review dataset and experiments | Complete | 14-day privacy-safe dataset exported; LSTM, GRU, and Transformer trained and API-validated; 120-scenario optimizer benchmark and report generated |
+
+## Academic Review Experiments (2026-10-14)
+
+- Generated a five-slot, fourteen-day deterministic simulated dataset in
+  `review_outputs/2026-10-15/dataset/review.db`, separate from application data.
+- Exported 4,032 feature buckets, 27 model features, 6,274 privacy-safe raw
+  records, ZIP, metadata, documentation, UTC timestamps, and SHA-256 hashes.
+- Prepared 2,810 train, 592 validation, and 594 test sequences under the
+  existing chronological 70/15/15, 12-step lookback contract.
+- Trained and reloaded LSTM, GRU, and Transformer artifacts with TensorFlow
+  2.22.0-rc0; validated content hashes and forecasts through the configured
+  prediction API without fallback. Metrics are in
+  `ml_results/model_comparison.csv`.
+- Ran 120 optimizer scenarios with three seeds each. Every policy/reference
+  had zero invalid assignments and rejected 60 full-capacity cases. Tables
+  and figures are under `optimization_results/`.
+- Generated `EXPERIMENTAL_REPORT.md` and `REPRODUCE.md`. The dataset ZIP was
+  uploaded to Drive and shared read-only within `vit.ac.in`.
+- Verification: 230 tests passed; Ruff passed. Two existing Starlette/AnyIO
+  deprecation warnings remain. See ADR-013 for scope and limitations.
 
 ## Completed This Session
 
