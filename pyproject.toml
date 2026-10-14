@@ -25,6 +25,7 @@ dev = [
   "ruff>=0.12,<1",
 ]
 ml = ["tensorflow>=2.20,<3", "matplotlib>=3.10,<4"]
+review = ["python-docx>=1.1,<2"]
 
 [tool.setuptools.packages.find]
 include = ["backend*", "optimization*", "prediction*", "vision*"]

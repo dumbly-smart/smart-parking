@@ -318,3 +318,20 @@ claim measured site performance, physical throughput, or microcontroller
 inference. Negative finite scaler means are valid because centered continuous
 features can have signed training averages; scaler values still must be finite
 and scales must remain positive.
+
+## ADR-014: Device firmware uses a local server boundary and fail-closed actuation
+
+- Date: 2026-10-14
+- Status: Accepted
+
+### Context
+
+The project adds a Wi-Fi-connected ESP32 controller and AI-Thinker ESP32-CAM to a backend whose existing APIs remain hardware-independent. Network failure must not create duplicate lifecycle operations or open the gate without a confirmed allocation.
+
+### Decision
+
+Keep prediction, allocation, persistence, and camera occupancy processing on the local Python server. The controller calls the existing JSON APIs, persists one idempotency key per pending card operation in NVS, validates status and allocation responses, and actuates the demonstration servo only after confirmed state. The camera serves bounded JPEG snapshots; a separate Python poller validates and forwards them to the existing occupancy endpoint. Use proposed pin maps documented for ESP32 DevKit/WROOM-32 and AI-Thinker camera variants, with isolated servo power and common ground.
+
+### Consequences
+
+The existing simulation and backend contracts remain usable without hardware. A local network and server are required for physical operation; the unauthenticated APIs must stay on a trusted LAN. Compilation and software tests do not prove electrical or physical behavior, which remains a manual bench-validation task.

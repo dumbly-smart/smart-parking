@@ -1,0 +1,21 @@
+Board,Component,Signal,GPIO,Voltage,Notes
+ESP32 DevKit V1 (proposed),RC522,SCK,18,3.3V logic,VSPI clock
+ESP32 DevKit V1 (proposed),RC522,MISO,19,3.3V logic,VSPI MISO
+ESP32 DevKit V1 (proposed),RC522,MOSI,23,3.3V logic,VSPI MOSI
+ESP32 DevKit V1 (proposed),RC522,SDA/SS,13,3.3V logic,Chip select; avoid strapping pins
+ESP32 DevKit V1 (proposed),RC522,RST,4,3.3V logic,Reset
+ESP32 DevKit V1 (proposed),OLED,SDA,21,3.3V logic,Use module with 3.3V pull-ups
+ESP32 DevKit V1 (proposed),OLED,SCL,22,3.3V logic,Use module with 3.3V pull-ups
+ESP32 DevKit V1 (proposed),Slot LED 1,Anode via 330 ohm resistor,25,3.3V output,LED cathode to common ground
+ESP32 DevKit V1 (proposed),Slot LED 2,Anode via 330 ohm resistor,26,3.3V output,LED cathode to common ground
+ESP32 DevKit V1 (proposed),Slot LED 3,Anode via 330 ohm resistor,27,3.3V output,LED cathode to common ground
+ESP32 DevKit V1 (proposed),Slot LED 4,Anode via 330 ohm resistor,32,3.3V output,LED cathode to common ground
+ESP32 DevKit V1 (proposed),Slot LED 5,Anode via 330 ohm resistor,33,3.3V output,LED cathode to common ground
+ESP32 DevKit V1 (proposed),SG90,Signal,14,3.3V PWM signal,Servo power from separate regulated 5V supply
+SG90 supply,SG90,+5V,-,5V,Separate regulator with >=1A capability; check exact servo datasheet
+AI-Thinker ESP32-CAM,OV2640,PWDN,32,Module-internal,Reserved by camera module
+AI-Thinker ESP32-CAM,OV2640,XCLK,0,Module-internal,Reserved and strapping pin; do not attach other circuitry
+AI-Thinker ESP32-CAM,OV2640,SIOD/SIOC,26/27,Module-internal,Camera SCCB control
+AI-Thinker ESP32-CAM,OV2640,Y2-Y9,5/18/19/21/36/39/34/35,Module-internal,Camera data bus; GPIO34-39 input-only
+AI-Thinker ESP32-CAM,OV2640,VSYNC/HREF/PCLK,25/23/22,Module-internal,Camera sync/clock
+AI-Thinker ESP32-CAM,Camera board,+5V input,-,5V,Regulated board input; verify silkscreen and vendor documentation

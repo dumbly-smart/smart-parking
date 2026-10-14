@@ -1,4 +1,4 @@
-.PHONY: install test lint run review review-dataset review-ml review-package-models review-optimizers review-report
+.PHONY: install test lint run review review-dataset review-ml review-package-models review-optimizers review-report final-submission camera-ingest calibrate-rois firmware-controller firmware-camera
 
 REVIEW_ROOT = review_outputs/2026-10-15
 REVIEW_DB = sqlite:///$(REVIEW_ROOT)/dataset/review.db
@@ -31,3 +31,18 @@ review-report:
 	python -m scripts.generate_experimental_report --output-root $(REVIEW_ROOT)
 
 review: review-package-models review-optimizers review-report
+
+final-submission:
+	python -m scripts.build_final_submission
+
+camera-ingest:
+	python -m scripts.camera_ingest
+
+calibrate-rois:
+	python -m scripts.calibrate_camera_rois
+
+firmware-controller:
+	pio run -d firmware/esp32_controller
+
+firmware-camera:
+	pio run -d firmware/esp32_cam

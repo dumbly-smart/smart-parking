@@ -40,6 +40,7 @@ checkpoints/
 # Firmware builds
 .pio/
 firmware/**/build/
+firmware/**/include/local_config.h
 
 # Editors and operating systems
 .idea/

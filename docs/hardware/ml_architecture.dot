@@ -1,0 +1,18 @@
+digraph models {
+  graph [rankdir=LR, bgcolor="white", pad="0.25", nodesep="0.35", ranksep="0.65", fontname="DejaVu Sans", labelloc="t", label="Implemented prediction architectures (shared 12 × 27 input; one-step regression)", fontsize=16];
+  node [shape=box, style="rounded,filled", fillcolor="#eef4fa", color="#315a7d", fontname="DejaVu Sans", fontsize=9, margin="0.1,0.06"];
+  edge [fontname="DejaVu Sans", fontsize=8, color="#425466", arrowsize=0.65];
+  input [label="PreparedDataset\n12 intervals × 27 features\ntraining-only scaler"];
+  subgraph cluster_lstm { label="LSTM"; color="#85a5bd"; style="rounded"; l1 [label="LSTM(16)"]; l2 [label="Dense(1, sigmoid)"]; l1 -> l2; }
+  subgraph cluster_gru { label="GRU"; color="#85a5bd"; style="rounded"; g1 [label="GRU(16)"]; g2 [label="Dense(1, sigmoid)"]; g1 -> g2; }
+  subgraph cluster_tx { label="Temporal Transformer"; color="#85a5bd"; style="rounded"; t1 [label="Dense projection(16)\n+ learned position embedding"]; t2 [label="Self-attention\n2 heads · key_dim 8"];
+    t3 [label="Residual + LayerNorm\nFFN 32→16 ReLU\nResidual + LayerNorm"];
+    t4 [label="Global average pooling\nDense(1, sigmoid)"];
+    t1 -> t2 -> t3 -> t4;
+  }
+  input -> l1;
+  input -> g1;
+  input -> t1;
+  out [label="Next 5-minute occupancy ratio\nregression output in [0,1]", fillcolor="#e8f4e7"];
+  l2 -> out; g2 -> out; t4 -> out;
+}

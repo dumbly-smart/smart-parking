@@ -1,0 +1,18 @@
+digraph wiring {
+  graph [rankdir=LR, bgcolor="white", pad="0.25", nodesep="0.3", ranksep="0.7", fontname="DejaVu Sans", labelloc="t", label="Controller wiring and signal map (proposed; see pin_connections.csv)", fontsize=16];
+  node [shape=box, style="rounded,filled", fillcolor="#f5f8fb", color="#3e6178", fontname="DejaVu Sans", fontsize=9, margin="0.1,0.06"];
+  edge [fontname="DejaVu Sans", fontsize=8, color="#37474f", arrowsize=0.65];
+  esp [label="ESP32 DevKit V1\nWROOM-32\n(proposed target)", fillcolor="#e3eff8"];
+  rfid [label="RC522 · 3.3V\nSS=13 · RST=4\nSCK=18 · MISO=19\nMOSI=23"];
+  oled [label="SSD1306 OLED\nSDA=21 · SCL=22\n3.3-V logic only"];
+  servo [label="SG90 signal=14\nexternal regulated 5V\ncommon GND"];
+  cam [label="AI-Thinker ESP32-CAM\nCamera-only GPIO reserved\nWi-Fi JPEG snapshot"];
+  led [label="5 slot LEDs\nGPIO 25,26,27,32,33\neach with 330Ω series resistor"];
+  server [label="FastAPI server\nprivate LAN only"];
+  esp -> rfid [label="SPI"];
+  esp -> oled [label="I²C"];
+  esp -> servo [label="PWM signal"];
+  esp -> led [label="digital outputs"];
+  esp -> server [dir=both, label="HTTP JSON"];
+  cam -> server [dir=both, label="HTTP JPEG / capture poller"];
+}

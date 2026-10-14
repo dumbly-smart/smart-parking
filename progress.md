@@ -175,9 +175,19 @@ implemented.
 
 ## Next Task
 
-Implement firmware integration, including the documented controller and camera
-hardware flow.
+Flash the controller and camera on the exact board revisions, capture a real
+camera view, calibrate the five ROIs, and run the isolated physical checklist.
+The academic report should then be reviewed against the institution's template.
 
 ## Blockers
 
-None for backend development. Physical integration will later require the final pin map, local Wi-Fi credentials, camera placement, calibrated ROI coordinates, and access to the listed hardware.
+Physical integration requires the listed hardware, local Wi-Fi credentials, camera placement, and measured ROI calibration. The professor's base paper template was not present in the repository.
+
+## 2026-10-14 — Final review hardware and report deliverables
+
+- Added PlatformIO firmware projects for an ESP32 DevKit controller and an AI-Thinker ESP32-CAM. Controller uses the existing entry/exit/status/health endpoints, NVS-backed idempotency, privacy-conscious serial messages, occupied-slot LEDs, OLED feedback, and confirmed-allocation-only servo movement. Both targets compiled successfully: controller 27,220 B RAM / 474,549 B flash; camera 49,628 B RAM / 836,777 B flash. Physical hardware was unavailable, so no flash/bench test is claimed.
+- Added a bounded JPEG polling service for the existing occupancy API and an interactive real-camera ROI calibration tool that writes local `config/rois.json`; focused tests cover JPEG validation, API forwarding, ROI bounds/overlap, and real FastAPI occupancy processing.
+- Added editable Graphviz system, wiring, circuit, and ML architecture diagrams with rendered SVG/PNG copies, a proposed pin map, BOM, power/safety notes, and physical validation instructions. The mapping remains a proposal, not a measured circuit.
+- Generated an editable single-column DOCX and a 16-page A4 PDF from the existing measured dataset/model/optimizer results. Added demo procedure, software/physical test checklist, limitations, and submission checklist. The dataset/model Drive links are included and institution-restricted as previously documented.
+- The institution's base paper template and physical boards were not available; no actual camera, RFID, gate, power, or microcontroller inference result is claimed. Review the report against the institutional template and complete the isolated bench checks when hardware is available.
+- Final verification: `make test lint` passes (239 tests; two dependency deprecation warnings), `make firmware-controller firmware-camera` passes, and `make final-submission` generates the 16-page A4 PDF and editable DOCX. A copied-database live API smoke returned a finite GRU forecast with no fallback. Dataset CSV counts, timestamp ordering/uniqueness, no-UID export, ZIP CRC, SVG XML, and `git diff --check` also passed.

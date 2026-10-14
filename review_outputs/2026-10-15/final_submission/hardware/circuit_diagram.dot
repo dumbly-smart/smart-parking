@@ -1,0 +1,58 @@
+digraph circuit {
+  graph [rankdir=LR, bgcolor="white", pad="0.25", nodesep="0.35", ranksep="0.75", fontname="DejaVu Sans", labelloc="t", label="Proposed bench wiring — ESP32 DevKit V1 (WROOM-32) + AI-Thinker ESP32-CAM", fontsize=16];
+  node [shape=box, style="rounded,filled", fillcolor="#f5f8fb", color="#3e6178", fontname="DejaVu Sans", fontsize=9, margin="0.1,0.06"];
+  edge [fontname="DejaVu Sans", fontsize=8, color="#37474f", arrowsize=0.65];
+
+  subgraph cluster_main {
+    label="ESP32 DevKit V1 — controller (proposed pin assignment)"; style="rounded"; color="#7997ad";
+    esp [label="ESP32 DevKit\n3V3 · GND\nGPIO 4, 13, 14\nGPIO 18,19,23\nGPIO 21,22\nGPIO 25,26,27,32,33", fillcolor="#e3eff8"];
+    rfid [label="RC522 reader\n3V3 · GND\nSDA/SS · SCK · MOSI\nMISO · RST"];
+    oled [label="OLED I²C\n3V3 logic only\nVCC · GND · SDA · SCL"];
+    servo [label="SG90 servo\nSignal · +5V · GND"];
+    supply_servo [label="Dedicated regulated\n5V servo supply\n≥1A recommended", fillcolor="#fff0df"];
+    led1 [label="330Ω → LED 1\nslot 1"];
+    led2 [label="330Ω → LED 2\nslot 2"];
+    led3 [label="330Ω → LED 3\nslot 3"];
+    led4 [label="330Ω → LED 4\nslot 4"];
+    led5 [label="330Ω → LED 5\nslot 5"];
+    usb [label="USB 5V supply\ncontroller power"];
+    ground [shape=oval, label="Common ground star\ncontroller · servo · camera", fillcolor="#eeeeee"];
+
+    esp -> rfid [label="SPI: 18 SCK, 19 MISO, 23 MOSI\n13 SS, 4 RST"];
+    esp -> oled [label="I²C: 21 SDA, 22 SCL"];
+    esp -> servo [label="GPIO 14 PWM (signal only)"];
+    esp -> led1 [label="GPIO 25"];
+    esp -> led2 [label="GPIO 26"];
+    esp -> led3 [label="GPIO 27"];
+    esp -> led4 [label="GPIO 32"];
+    esp -> led5 [label="GPIO 33"];
+    usb -> esp [label="USB power"];
+    supply_servo -> servo [label="+5V — do not power from GPIO"];
+    esp -> rfid [style=dashed, color="#16803c", label="3V3 + GND"];
+    esp -> oled [style=dashed, color="#16803c", label="3V3 + GND"];
+    ground -> esp [style=dashed, color="#555555", label="GND"];
+    ground -> rfid [style=dashed, color="#555555", label="GND"];
+    ground -> oled [style=dashed, color="#555555", label="GND"];
+    ground -> servo [style=dashed, color="#555555", label="GND"];
+    ground -> supply_servo [style=dashed, color="#555555", label="supply negative"];
+    led1 -> ground [label="LED cathode"];
+    led2 -> ground [label="LED cathode"];
+    led3 -> ground [label="LED cathode"];
+    led4 -> ground [label="LED cathode"];
+    led5 -> ground [label="LED cathode"];
+  }
+
+  subgraph cluster_camera {
+    label="AI-Thinker ESP32-CAM (selected compile target; verify board marking)"; style="rounded"; color="#bd9567";
+    cam [label="ESP32-CAM + OV2640\n5V input · GND\nCamera pins reserved by module", fillcolor="#fff4e3"];
+    supply_cam [label="Separate regulated\n5V camera supply\nboard-specific current margin", fillcolor="#fff0df"];
+    cam5 [label="Do not join +5V rails\nwithout a designed power tree", shape=note, fillcolor="#fff8d9"];
+    supply_cam -> cam [label="5V and GND"];
+    ground -> cam [style=dashed, color="#555555", label="GND reference"];
+    cam5 -> supply_cam [style=dotted, arrowhead=none];
+  }
+
+  network [label="2.4 GHz Wi-Fi\nprivate LAN", shape=cloud, fillcolor="#e5f6f7"];
+  cam -> network [dir=both, style=dashed, label="HTTP snapshot"];
+  esp -> network [dir=both, style=dashed, label="HTTP JSON API"];
+}

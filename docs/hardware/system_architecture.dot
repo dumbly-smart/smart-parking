@@ -1,0 +1,36 @@
+digraph system {
+  graph [rankdir=LR, bgcolor="white", pad="0.25", nodesep="0.45", ranksep="0.7", fontname="DejaVu Sans", labelloc="t", label="Smart Parking System — software and hardware data flow", fontsize=18];
+  node [shape=box, style="rounded,filled", fillcolor="#edf4fb", color="#315a7d", fontname="DejaVu Sans", fontsize=10, margin="0.12,0.08"];
+  edge [fontname="DejaVu Sans", fontsize=9, color="#425466", arrowsize=0.7];
+
+  cam [label="ESP32-CAM\nJPEG snapshot /health"];
+  ingest [label="Python camera_ingest\nbounded poll + JPEG validation"];
+  controller [label="ESP32 DevKit controller\nRC522 · OLED · LEDs · servo"];
+  browser [label="Browser dashboard\nstatus · comparisons · forecast"];
+
+  subgraph cluster_backend {
+    label="Laptop / server — FastAPI + SQLite";
+    color="#97b4ca"; style="rounded";
+    api [label="FastAPI routes\nvehicle · camera · status · prediction · allocation", fillcolor="#e4f3e9"];
+    vision [label="Vision service\nROI edge-density + confidence smoothing"];
+    lifecycle [label="Parking lifecycle\nidempotency + allocation"];
+    optimizer [label="GA · PSO · ACO\nweighted assignment objective"];
+    prediction [label="LSTM · GRU · temporal Transformer\nserver-side occupancy forecast"];
+    db [shape=cylinder, label="SQLite\nslots · sessions · events · metrics", fillcolor="#fff4d9"];
+    api -> vision [label="JPEG"];
+    api -> lifecycle [label="RFID operation"];
+    lifecycle -> optimizer;
+    api -> prediction;
+    vision -> db;
+    lifecycle -> db;
+    prediction -> db;
+    api -> db [label="read status"];
+  }
+
+  cam -> ingest [label="Wi-Fi · GET /capture"];
+  ingest -> api [label="Wi-Fi · multipart POST /api/camera/occupancy"];
+  controller -> api [label="Wi-Fi · JSON entry / exit / health / status"];
+  api -> controller [label="assignment · confirmation"];
+  api -> browser [dir=both, label="HTTP dashboard and APIs"];
+  api -> prediction [style=dashed, label="forecast endpoint"];
+}
