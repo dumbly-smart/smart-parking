@@ -23,6 +23,7 @@ from docx.shared import Inches, Pt, RGBColor
 
 REVIEW = Path("review_outputs/2026-10-15")
 DATASET_URL = "https://drive.google.com/file/d/1-bgCGNuCgbhWTbKyxnMlLpOQH1s3lxSZ/view?usp=drivesdk"
+DATASET_PUBLIC_URL = "https://github.com/dumbly-smart/smart-parking/raw/5b480d1/review_outputs/2026-10-15/dataset/parking_dataset.zip"
 MODELS_URL = "https://drive.google.com/file/d/1I1ECMeYlJT9-oop4Bh-Qedgti9Kds6lj/view?usp=drivesdk"
 
 
@@ -543,9 +544,9 @@ def build_report(
     )
     _paragraph(
         document,
-        "Dataset files and metadata are in review_outputs/2026-10-15/dataset. The dataset ZIP is shared read-only within the vit.ac.in domain: ",
+        "Dataset files and metadata are in review_outputs/2026-10-15/dataset. A public, version-pinned ZIP download is available from GitHub: ",
     )
-    _add_hyperlink(document.paragraphs[-1], "download simulated dataset", DATASET_URL)
+    _add_hyperlink(document.paragraphs[-1], "download simulated dataset", DATASET_PUBLIC_URL)
 
     _heading(document, "6.2 Forecasting Architectures", 2)
     _add_figure(
@@ -802,8 +803,9 @@ def build_report(
     _heading(document, "Dataset Availability")
     _paragraph(
         document,
-        "The privacy-safe simulated dataset archive is shared with read access restricted to the vit.ac.in Google Workspace domain. It is not a public link. The archive contains parking_raw.csv, parking_features.csv, dataset_metadata.json, and dataset documentation.",
+        "The privacy-safe simulated dataset archive is publicly downloadable from the project's GitHub repository. The version-pinned ZIP contains parking_raw.csv, parking_features.csv, dataset_metadata.json, and dataset documentation. A Google Drive mirror is also provided, but its current permission is restricted to the vit.ac.in Google Workspace domain; use the public GitHub link if you do not have VIT access.",
     )
+    _add_hyperlink(document.add_paragraph(), "Public dataset ZIP (GitHub)", DATASET_PUBLIC_URL)
     _add_hyperlink(
         document.add_paragraph(), "Google Drive dataset ZIP (institution-only)", DATASET_URL
     )

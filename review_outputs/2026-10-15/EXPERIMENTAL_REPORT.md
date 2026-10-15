@@ -5,7 +5,7 @@ Generated from local executed outputs. All dataset observations are synthetic si
 ## Dataset
 
 The exported feature timeline contains 4,032 five-minute buckets and 27 model features over 2026-08-01T00:00:00Z to 2026-08-14T23:55:00Z. The raw export contains 6,274 privacy-safe source records. Seed: `20260908`.
-Google Drive dataset ZIP: [download](https://drive.google.com/file/d/1-bgCGNuCgbhWTbKyxnMlLpOQH1s3lxSZ/view?usp=drivesdk) (read-only access for `vit.ac.in`).
+Public, version-pinned dataset ZIP: [download from GitHub](https://github.com/dumbly-smart/smart-parking/raw/5b480d1/review_outputs/2026-10-15/dataset/parking_dataset.zip) (publicly accessible). Google Drive mirror: [download](https://drive.google.com/file/d/1-bgCGNuCgbhWTbKyxnMlLpOQH1s3lxSZ/view?usp=drivesdk) (read-only access for `vit.ac.in`).
 
 Training sequences: {'test': 594, 'train': 2810, 'validation': 592}. Continuous variables are standardized using training data only. The unchanged prediction contract uses a 12-bucket lookback and next-bucket target.
 

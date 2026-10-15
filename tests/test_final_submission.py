@@ -21,6 +21,12 @@ def test_final_report_is_single_column_and_uses_real_project_results(tmp_path) -
     assert "0.098055" in text
     assert "model=gru" in text
     assert "fallback_reason=null" in text
+    assert "Public dataset ZIP (GitHub)" in text
+    assert any(
+        relationship.target_ref
+        == "https://github.com/dumbly-smart/smart-parking/raw/5b480d1/review_outputs/2026-10-15/dataset/parking_dataset.zip"
+        for relationship in document.part.rels.values()
+    )
     assert "vit.ac.in" in text
     assert "NOT TESTED" in text
     assert len(document.sections) == 1

@@ -7,4 +7,4 @@
 - The forecasting corpus is deterministic synthetic data. The models run on the server; no ESP32 inference, power or real-time hardware benchmark is claimed.
 - Gate operation is a hobby-servo demonstration only, not a safety-rated barrier. Power loss cannot guarantee a mechanical closed position.
 - The professor's base paper template was not present in the repository; the generated report is a conventional single-column academic format.
-- The available Drive link is institution-restricted, as documented in the experimental report. Confirm reviewer access through VIT accounts.
+- The Google Drive mirror is institution-restricted; the report also provides a public, version-pinned GitHub ZIP download for reviewers without VIT access.
