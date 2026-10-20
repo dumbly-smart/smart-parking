@@ -94,6 +94,14 @@ def _add_table(
 def _add_caption(document: Document, text: str) -> None:
     paragraph = document.add_paragraph(style="Caption")
     paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    paragraph.paragraph_format.keep_with_next = True
+    paragraph.add_run(text)
+
+
+def _add_table_caption(document: Document, text: str) -> None:
+    paragraph = document.add_paragraph(style="Caption")
+    paragraph.alignment = WD_ALIGN_PARAGRAPH.LEFT
+    paragraph.paragraph_format.keep_with_next = True
     paragraph.add_run(text)
 
 
@@ -155,6 +163,7 @@ def _add_page_number(paragraph: Any) -> None:
 
 def _style_document(document: Document) -> None:
     section = document.sections[0]
+    section.different_first_page_header_footer = True
     section.page_width = Inches(8.27)
     section.page_height = Inches(11.69)
     section.top_margin = Inches(0.72)
@@ -198,6 +207,8 @@ def _style_document(document: Document) -> None:
         run.font.size = Pt(8)
         run.font.color.rgb = RGBColor(90, 100, 110)
     _add_page_number(section.footer.paragraphs[0])
+    section.first_page_header.paragraphs[0].clear()
+    section.first_page_footer.paragraphs[0].clear()
 
 
 def _paragraph(document: Document, text: str) -> None:
@@ -212,11 +223,9 @@ def _heading(document: Document, text: str, level: int = 1) -> None:
     document.add_heading(text, level=level)
 
 
-def _add_results_tables(
-    document: Document, root: Path
-) -> tuple[list[dict[str, str]], list[dict[str, str]]]:
+def _add_model_results_table(document: Document, root: Path) -> list[dict[str, str]]:
     model_rows = _read_csv(root / REVIEW / "ml_results/model_comparison.csv")
-    optimizer_rows = _read_csv(root / REVIEW / "optimization_results/optimizer_comparison.csv")
+    _add_table_caption(document, "Table 5. Test-set prediction performance by model")
     _add_table(
         document,
         ["Model", "MAE", "MSE", "RMSE", "Latency ms/example", "Size bytes"],
@@ -232,6 +241,12 @@ def _add_results_tables(
             for row in model_rows
         ],
     )
+    return model_rows
+
+
+def _add_optimizer_results_table(document: Document, root: Path) -> list[dict[str, str]]:
+    optimizer_rows = _read_csv(root / REVIEW / "optimization_results/optimizer_comparison.csv")
+    _add_table_caption(document, "Table 6. Allocation performance across all repeated runs")
     _add_table(
         document,
         ["Policy", "Success / attempts", "Mean cost", "Median runtime ms", "Mean gap", "Invalid"],
@@ -247,7 +262,7 @@ def _add_results_tables(
             for row in optimizer_rows
         ],
     )
-    return model_rows, optimizer_rows
+    return optimizer_rows
 
 
 def build_report(
@@ -271,6 +286,7 @@ def build_report(
     _style_document(document)
 
     title = document.add_paragraph(style="Title")
+    title.paragraph_format.space_before = Pt(105)
     title.alignment = WD_ALIGN_PARAGRAPH.CENTER
     title.add_run("Smart Parking System")
     subtitle = document.add_paragraph()
@@ -285,32 +301,36 @@ def build_report(
     authors.add_run(
         "Akil Ansari A  ·  25BCE2777\nVellore Institute of Technology\nFinal project review · 15 October 2026"
     )
+    authors.paragraph_format.space_before = Pt(28)
+    document.add_page_break()
 
     _heading(document, "Abstract")
     abstract = (
-        "Parking guidance systems need timely occupancy information, a consistent way to assign available spaces, "
-        "and a reliable interface between roadside devices and server software. This project implements a five-slot "
-        "smart-parking prototype architecture with a FastAPI and SQLite backend, RFID-based vehicle entry and exit, "
-        "a configurable camera occupancy service, three allocation heuristics, and server-side occupancy forecasting. "
-        "The repository's completed software experiments use a deterministic synthetic 14-day timeline sampled every "
-        "five minutes (4,032 buckets and 27 features); these are simulated records, not observations from a deployed lot. "
-        "The same chronological 70/15/15 split and training-only standardization are used for LSTM, GRU, and temporal "
-        "Transformer regressors. On the untouched synthetic test partition, GRU achieved MAE 0.098055 and RMSE "
-        "0.117862, compared with persistence MAE 0.120875; the result is dataset-specific and does not establish "
-        "general superiority. In 120 optimizer scenarios with three repeat seeds, GA matched the enumerated single-slot "
-        "optimum in mean cost (0.378194), while PSO and ACO had mean optimality gaps 0.048264 and 0.003586. Exact "
-        "enumeration remained the appropriate reference for this small five-candidate problem. Controller and camera "
-        "firmware, a JPEG polling service, and interactive ROI calibration are supplied with a proposed wiring design. "
-        "Further evaluation should use locally collected occupancy labels, measured device response under network faults, "
-        "and larger lots; those assessments are outside the current software-only evidence. Both firmware projects "
-        "compile for their selected board targets, but no physical prototype, "
-        "camera classification accuracy, microcontroller inference, or power measurement is claimed."
+        "Parking systems need current occupancy, reliable entry and exit records, and a defensible method for assigning "
+        "available spaces. This work presents a five-slot smart-parking prototype that combines RFID lifecycle APIs, "
+        "camera-based occupancy processing, optimization-based allocation, short-horizon forecasting, and an operational "
+        "dashboard around a FastAPI and SQLite backend. Device firmware targets an ESP32 controller and an AI-Thinker "
+        "ESP32-CAM; a Python ingestion service forwards JPEG snapshots to the backend, while neural inference remains "
+        "server-side. Experimental evaluation uses a deterministic, explicitly synthetic 14-day timeline sampled every "
+        "five minutes (4,032 buckets and 27 input features). LSTM, GRU, and temporal Transformer models share a 12-step "
+        "lookback, a one-step forecast horizon, chronological 70/15/15 partitions, and training-only standardization. "
+        "On the untouched synthetic test split, GRU achieved MAE 0.098055 and RMSE 0.117862, compared with persistence "
+        "MAE 0.120875. In 120 allocation scenarios repeated with three seeds, GA and exhaustive enumeration had the same "
+        "mean objective cost (0.378194); PSO and ACO had mean optimality gaps of 0.048264 and 0.003586. These "
+        "measurements characterize the generated data and five-slot simulations only. Both firmware projects compile, "
+        "and a same-host software smoke test exercised the backend using simulated frames and RFID input. Physical RFID, "
+        "camera, display, LED, and gate behavior has not been verified. The report therefore distinguishes software and "
+        "simulation evidence from deployment performance and identifies real-data and supervised hardware testing as "
+        "necessary next steps."
     )
     _paragraph(document, abstract)
+    document.paragraphs[-1].paragraph_format.line_spacing = 1.15
+    document.paragraphs[-1].paragraph_format.space_after = Pt(12)
     _paragraph(
         document,
         "Keywords: smart parking, Internet of Things, RFID, camera occupancy, allocation optimization, occupancy forecasting, LSTM, GRU, Transformer",
     )
+    document.add_page_break()
 
     _heading(document, "1. Introduction")
     _paragraph(
@@ -363,6 +383,7 @@ def build_report(
             "Motivates heuristic allocation; its scenario and objective differ from the shared four-term objective and exhaustive five-slot reference here.",
         ],
     ]
+    _add_table_caption(document, "Table 1. Related studies and their relevance to this project")
     _add_table(
         document,
         ["Study", "Venue", "Method / reported contribution", "Relevance and limitation"],
@@ -373,12 +394,17 @@ def build_report(
         document,
         "The recurrent units follow established sequence-model designs: LSTM [6] and gated recurrent units [7]. The temporal Transformer uses self-attention and feed-forward residual blocks following the attention architecture introduced by Vaswani et al. [8]. These sources define model families, not evidence that a model trained on this synthetic corpus will transfer to a physical parking site. The gap addressed here is an end-to-end, reproducible comparison with matched inputs and explicit simulation limitations, rather than a claim of a new state-of-the-art method.",
     )
+    _paragraph(
+        document,
+        "Across these strands, prior work commonly emphasizes a particular sensing modality, city-scale prediction task, or optimization formulation. The present contribution is an integrated, inspectable prototype and a controlled comparison on its five-slot objective, with exact enumeration used to test whether metaheuristics add value at this scale. The contribution is engineering and evaluation of this system instance; it is not a new optimization algorithm or a field-validated occupancy model.",
+    )
 
     _heading(document, "3. Problem Statement and Objectives")
     _paragraph(
         document,
         "The system must keep a consistent record of which configured parking spaces are occupied, associate a vehicle's entry and exit with idempotent operations, select only a free slot, and expose current and short-horizon occupancy through a dashboard/API. A camera-based heuristic may suggest occupancy transitions, but its output is confidence-filtered and temporally smoothed before persistence. A forecast is a regression estimate over aggregated server history, not a direct image classifier.",
     )
+    _add_table_caption(document, "Table 2. Objectives, completion status, and available evidence")
     _add_table(
         document,
         ["Objective", "Status and evidence"],
@@ -405,7 +431,7 @@ def build_report(
             ],
             [
                 "Low-cost hardware integration",
-                "Firmware projects and proposed connection design supplied. Boards and wiring were unavailable; no assembled prototype claim.",
+                "Firmware projects compile and connection design is documented. A generic CH340 adapter was detected but its target is unknown; no peripheral behavior is verified.",
             ],
         ],
     )
@@ -429,6 +455,10 @@ def build_report(
         document,
         "Forecast flow uses the same PreparedDataset contract for each model. The runtime predictor loads compatible, hash-checked model artifacts and uses a deterministic fallback when unavailable. Allocation uses configured weights and excludes occupied candidates. The small five-slot exhaustive benchmark computes the exact single-slot minimum for each scenario.",
     )
+    _paragraph(
+        document,
+        "The backend exposes separate routes for vehicle entry/exit, parking status, image occupancy, allocation benchmarks, forecasts, and dashboard data. The database is the authoritative state shared by those services. Camera-derived observations update occupancy only after the detector's configured confidence and temporal conditions are met; they do not create or close an RFID vehicle session. Conversely, an RFID entry creates an operational session and allocation record but does not prove that a camera has visually observed the vehicle.",
+    )
 
     _heading(document, "5. Hardware Design")
     _paragraph(
@@ -447,6 +477,7 @@ def build_report(
         "wiring_diagram.png",
         "Figure 3. Proposed signal map for controller peripherals and Wi-Fi-connected camera.",
     )
+    _add_table_caption(document, "Table 3. Proposed controller pin assignments")
     _add_table(
         document,
         ["Component", "Signal", "ESP32 pin", "Voltage", "Connection note"],
@@ -498,6 +529,7 @@ def build_report(
     )
 
     _heading(document, "6. Software and Machine-Learning Design")
+    _add_table_caption(document, "Table 4. Software components and responsibilities")
     _add_table(
         document,
         ["Technology", "Role in implementation"],
@@ -520,7 +552,7 @@ def build_report(
             ],
             [
                 "Arduino framework + PlatformIO",
-                "ESP32 controller and AI-Thinker ESP32-CAM builds; no device was attached.",
+                "ESP32 controller and AI-Thinker ESP32-CAM builds; no device was attached during compile verification.",
             ],
             [
                 "Graphviz and python-docx",
@@ -567,7 +599,7 @@ def build_report(
     _heading(document, "6.3 Allocation Objective", 2)
     _paragraph(
         document,
-        "For candidate slot i, the shared normalized scalar objective is J(i) = 0.35 dᵢ + 0.30 cᵢ + 0.20 wᵢ + 0.15 fᵢ, where distance d, congestion c, waiting contribution w, and fairness penalty f are read from parking configuration. Occupied slots are excluded before search. The benchmark provides a first-available deterministic policy and exact enumeration across free candidates. GA, PSO, and ACO are evaluated on identical scenario records and weights. Convergence curves are not included because the existing optimizer interface does not expose valid per-iteration histories.",
+        "For candidate slot i, the shared normalized scalar objective is J(i) = 0.35 dᵢ + 0.30 cᵢ + 0.20 wᵢ + 0.15 fᵢ, where distance d, congestion c, waiting contribution w, and fairness penalty f are read from parking configuration. Occupied slots are excluded before search. The benchmark compares a first-available policy, exhaustive enumeration of every free slot (the exact optimum for this single-slot decision), and GA, PSO, and ACO on identical scenario records and weights. For heuristic assignment x, the optimality gap is J(x) − minᵢ J(i), which is nonnegative up to floating-point tolerance. Convergence curves are not included because the existing optimizer interface does not expose valid per-iteration histories [12], [13].",
     )
     _paragraph(document, "The controller-side request sequence is:")
     code = document.add_paragraph()
@@ -607,16 +639,16 @@ def build_report(
     )
     _paragraph(
         document,
-        "The host's development environment provides 16 logical/physical core accounting as reported by lscpu (Intel Core i7-14650HX, 24 CPUs online) and 15 GiB RAM; benchmark latencies are software measurements from this machine and vary with system load. The software repository has no available physical ESP32 boards, RC522, camera, OLED, LED wiring or servo connected for this report.",
+        "The host's development environment provides an Intel Core i7-14650HX with 24 CPUs online and 15 GiB RAM; benchmark latencies are software measurements from this machine and vary with system load. During the integration check, the host exposed a generic CH340 USB serial adapter at /dev/ttyUSB0, but the attached target board could not be identified from the host. No private controller configuration was present, and esp32-cam.local was not resolved from the test host. The adapter alone does not establish that the controller or any peripheral is connected or functioning; no physical behavior is claimed.",
     )
 
     _heading(document, "9. Results and Discussion")
-    _heading(document, "9.1 Forecast quality", 2)
+    _heading(document, "9.1 Prediction Results", 2)
     _paragraph(
         document,
-        "Table 2 compares the persistence reference with the three trained neural regressors on the same test windows. GRU is the best measured model for MAE and RMSE on this generated split. This is an empirical ranking for one synthetic dataset and seed, not evidence of universal superiority or real-lot forecast quality. All inference timing is server CPU timing; model size is serialized Keras size.",
+        "Table 5 compares the persistence reference with the three trained neural regressors on the same test windows. GRU is the best measured model for MAE and RMSE on this generated split. This is an empirical ranking for one synthetic dataset and seed, not evidence of universal superiority or real-lot forecast quality. All inference timing is server CPU timing; model size is serialized Keras size.",
     )
-    _add_results_tables(document, repository_root)
+    _add_model_results_table(document, repository_root)
     _add_figure(
         document,
         figures,
@@ -638,65 +670,66 @@ def build_report(
             document,
             figures,
             filename,
-            f"Figure 7.{model_name}. Training and validation loss for the fitted {model_name} run.",
+            f"Figure {7 + (0 if model_name == 'LSTM' else 1 if model_name == 'GRU' else 2)}. {model_name} training and validation loss for the fitted run.",
         )
     _add_figure(
         document,
         figures,
         "mae_comparison.png",
-        "Figure 8. Measured model MAE comparison on the shared chronological test partition.",
+        "Figure 10. Measured model MAE comparison on the shared chronological test partition.",
     )
     _add_figure(
         document,
         figures,
         "rmse_comparison.png",
-        "Figure 9. Measured model RMSE comparison on the shared chronological test partition.",
+        "Figure 11. Measured model RMSE comparison on the shared chronological test partition.",
     )
     _add_figure(
         document,
         figures,
         "latency_comparison.png",
-        "Figure 10. Measured per-example inference latency on the server host.",
+        "Figure 12. Measured per-example inference latency on the server host.",
     )
     _paragraph(
         document,
         f"The measured GRU test MAE is {float(models['gru']['mae']):.6f}, versus persistence MAE {float(models['persistence_baseline']['mae']):.6f}. The 27 features include simulated calendar/weather/event context, but synthetic context may encode generator-specific patterns. Real measured samples, external-site validation and repeated independent dataset seeds are needed before drawing deployment conclusions. No camera accuracy metric is reported because no labeled image evaluation set is available.",
     )
 
-    _heading(document, "9.2 Allocation optimization", 2)
+    _heading(document, "9.2 Allocation Results", 2)
     _paragraph(
         document,
-        "Table 3 summarizes successful allocation runs; each policy also rejected 60 of 360 attempts at full capacity. There were zero invalid slot assignments. The exhaustive policy is the exact single-slot minimum for each scenario. GA matched this mean cost in this run but required substantially more Python runtime than enumeration; ACO was close to optimal and PSO had a larger mean gap. The first-available baseline was fastest but had higher mean cost. Heuristics are not expected to beat exact enumeration when at most five candidates exist.",
+        "Table 6 summarizes allocation performance across the repeated attempts; each policy rejected 60 of 360 attempts at full capacity. There were zero invalid slot assignments. The exhaustive policy is the exact single-slot minimum for each scenario. GA matched this mean cost in this run but required substantially more Python runtime than enumeration; ACO was close to optimal and PSO had a larger mean gap. The first-available baseline was fastest but had higher mean cost. Heuristics are not expected to beat exact enumeration when at most five candidates exist.",
     )
+    _add_optimizer_results_table(document, repository_root)
     _add_figure(
         document,
         figures,
         "optimizer_comparison.png",
-        "Figure 11. Mean allocation objective cost by policy and exact/baseline reference.",
+        "Figure 13. Mean allocation objective cost by policy and exact/baseline reference.",
     )
     _add_figure(
         document,
         figures,
         "execution_time.png",
-        "Figure 12. Software execution-time comparison; logarithmic scaling is labeled in the figure.",
+        "Figure 14. Software execution-time comparison; logarithmic scaling is labeled in the figure.",
     )
     _add_figure(
         document,
         figures,
         "cost_by_occupancy.png",
-        "Figure 13. Objective cost by simulated occupancy category.",
+        "Figure 15. Objective cost by simulated occupancy category.",
     )
     _add_figure(
         document,
         figures,
         "optimality_gap_distribution.png",
-        "Figure 14. Per-run nonnegative gap from exact enumeration.",
+        "Figure 16. Per-run nonnegative gap from exact enumeration.",
     )
     _add_figure(
         document,
         figures,
         "objective_components.png",
-        "Figure 15. Mean weighted objective components among successful allocations.",
+        "Figure 17. Mean weighted objective components among successful allocations.",
     )
     occupancy_rows = []
     for level in ("empty", "light", "moderate", "heavy", "near_full"):
@@ -707,6 +740,7 @@ def build_report(
                 for name in ("first_available", "exhaustive_optimum", "GA", "PSO", "ACO")
             ]
         )
+    _add_table_caption(document, "Table 7. Mean objective cost by simulated occupancy category")
     _add_table(
         document,
         ["Occupancy category", "First available", "Exact", "GA", "PSO", "ACO"],
@@ -721,27 +755,36 @@ def build_report(
     _heading(document, "9.3 Hardware and integration test status", 2)
     _paragraph(
         document,
-        "PlatformIO successfully compiled the controller for esp32dev and the camera for AI Thinker ESP32-CAM. The controller image used 27,220 bytes of RAM (8.3% of 327,680) and 474,549 bytes of flash (36.2% of 1,310,720); the camera image used 49,628 bytes of RAM (15.1% of 327,680) and 836,777 bytes of flash (26.6% of 3,145,728). No device was connected during this review; therefore no measured RF range, camera frame rate, servo angle accuracy, OLED readability, current draw, energy use, gate cycle timing under load, hardware API latency, or physical occupancy accuracy is available. The occupancy API has software tests with generated images and status-transition assertions, not a labeled real-camera set.",
+        "PlatformIO successfully compiled the controller for esp32dev and the camera for AI Thinker ESP32-CAM. The controller image used 27,220 bytes of RAM (8.3% of 327,680) and 474,549 bytes of flash (36.2% of 1,310,720); the camera image used 49,628 bytes of RAM (15.1% of 327,680) and 836,777 bytes of flash (26.6% of 3,145,728). A generic CH340 USB serial adapter was visible as /dev/ttyUSB0, but the target could not be identified and neither the controller nor camera was verified on the network. Consequently no measured RF range, camera frame rate, servo angle accuracy, OLED readability, current draw, energy use, gate cycle timing under load, hardware API latency, or physical occupancy accuracy is available. The occupancy API has software tests with generated images and status-transition assertions, not a labeled real-camera set.",
     )
+    _add_table_caption(document, "Table 8. Verification evidence and physical test status")
     _add_table(
         document,
-        ["Quantity", "Reported result"],
+        ["Check", "Observed result"],
         [
             [
-                "Camera occupancy accuracy / precision / recall",
+                "Controller firmware build",
+                "PASS: PlatformIO compilation for esp32dev; no flashing or board execution claimed.",
+            ],
+            [
+                "ESP32-CAM firmware build",
+                "PASS: PlatformIO compilation for AI-Thinker target; no camera capture verified.",
+            ],
+            [
+                "USB serial/network reachability",
+                "Generic CH340 adapter detected; board identity unknown. esp32-cam.local not resolved from test host.",
+            ],
+            [
+                "RFID, OLED, LEDs, servo, real camera",
+                "NOT TESTED physically; no component-level behavior or electrical measurements are available.",
+            ],
+            [
+                "Vision accuracy",
                 "Not measured; no labeled real-camera test set.",
             ],
             [
                 "ESP32 inference latency / memory",
-                "Not applicable to current server-based TensorFlow inference; not measured on device.",
-            ],
-            [
-                "Servo current, power or mechanical safety",
-                "Not measured; physical servo not connected.",
-            ],
-            [
-                "Physical camera frame rate / Wi-Fi reliability",
-                "Not measured; no camera board connected.",
+                "Not applicable to the current server-side TensorFlow design; not measured on device.",
             ],
         ],
     )
@@ -754,6 +797,10 @@ def build_report(
     _paragraph(
         document,
         "A separate host-runtime smoke test copied the review database, selected the saved GRU artifact through the existing predictor setting, and called GET /api/prediction. The response was model=gru, fallback_reason=null, occupancy_ratio=0.136493 for the synthetic timeline. This verifies server-side artifact loading and inference; it is not an ESP32 measurement.",
+    )
+    _paragraph(
+        document,
+        "The same-host simulated integration check also confirmed /health with five configured slots, accepted three generated JPEG frames through the occupancy route, and ran a labeled simulated RFID entry that received slot S1. GA, PSO and ACO benchmark endpoints returned results. With only the short synthetic history in that isolated database, prediction correctly reported the deterministic fallback reason insufficient_history. These checks establish that software paths respond; generated images and RFID values do not establish camera or reader operation.",
     )
     _paragraph(
         document,
@@ -793,6 +840,8 @@ def build_report(
         "[9] Espressif Systems, “GPIO & RTC GPIO — ESP32,” ESP-IDF Programming Guide v5.1. https://docs.espressif.com/projects/esp-idf/en/v5.1/esp32/api-reference/peripherals/gpio.html (accessed 14 Oct. 2026).",
         "[10] Espressif Systems, “ESP32-CAM / AI-Thinker camera pin map,” esp32-camera repository. https://github.com/espressif/esp32-camera/blob/master/examples/camera_example/main/camera_pinout.h (accessed 14 Oct. 2026).",
         "[11] Smart Parking System repository, implementation and experimental outputs. https://github.com/dumbly-smart/smart-parking (accessed 14 Oct. 2026).",
+        "[12] J. Kennedy and R. Eberhart, “Particle swarm optimization,” in Proceedings of IEEE International Conference on Neural Networks, vol. 4, 1995, pp. 1942–1948. doi: 10.1109/ICNN.1995.488968.",
+        "[13] M. Dorigo, V. Maniezzo, and A. Colorni, “Ant System: Optimization by a Colony of Cooperating Agents,” IEEE Transactions on Systems, Man, and Cybernetics, Part B, vol. 26, no. 1, pp. 29–41, 1996. doi: 10.1109/3477.484436.",
     ]
     for reference in references:
         paragraph = document.add_paragraph(reference)

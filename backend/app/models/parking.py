@@ -10,8 +10,26 @@ class VehicleOperationRequest(BaseModel):
 
     rfid_uid: str = Field(min_length=1, max_length=128)
     idempotency_key: str = Field(min_length=1, max_length=128)
+    source: Literal["api", "controller", "simulation"] = "api"
 
     @field_validator("rfid_uid", "idempotency_key", mode="before")
+    @classmethod
+    def strip_identifier(cls, value: object) -> object:
+        return value.strip() if isinstance(value, str) else value
+
+    @field_validator("rfid_uid")
+    @classmethod
+    def normalize_rfid_uid(cls, value: str) -> str:
+        return value.upper()
+
+
+class HardwareEventRequest(BaseModel):
+    event_type: Literal["rfid_read", "gate_opened", "gate_closed"]
+    operation: Literal["entry", "exit"]
+    operation_key: str = Field(min_length=1, max_length=128)
+    rfid_uid: str = Field(min_length=1, max_length=128)
+
+    @field_validator("rfid_uid", "operation_key", mode="before")
     @classmethod
     def strip_identifier(cls, value: object) -> object:
         return value.strip() if isinstance(value, str) else value
@@ -63,6 +81,7 @@ class ParkingStatusResponse(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     slots: tuple[ParkingSlotStatus, ...]
+    event_cursor: int = 0
 
     @model_validator(mode="after")
     def non_empty_unique_slots(self) -> ParkingStatusResponse:

@@ -1,0 +1,12 @@
+{
+  "name": "smart-parking-assets",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Build source 3D parking lot and vehicle models",
+  "scripts": {
+    "build:assets": "node scripts/build_parking_assets.mjs"
+  },
+  "devDependencies": {
+    "three": "0.169.0"
+  }
+}

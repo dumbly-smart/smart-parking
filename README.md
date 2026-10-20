@@ -28,12 +28,33 @@ Open `http://127.0.0.1:8000/health`. The first startup creates the local SQLite
 database and idempotently seeds every slot from `config/parking.yaml`.
 
 Open `http://127.0.0.1:8000/dashboard` for the framework-free operations
-dashboard. It polls the existing parking-status, optimizer-benchmark,
+dashboard. It reads parking status and polls optimizer-benchmark,
 predictor-benchmark, and prediction APIs; slot cards are rendered from the
 configured status response, so deployments are not limited to the five-slot
-demo. The page shows selected optimizer/predictor settings, live occupancy,
-comparison tables, forecast target time, and stable prediction fallback state.
-It deliberately does not display RFID or session identifiers.
+demo. Each slot's world position, heading, entry route, and exit route are keyed
+by slot ID in `config/parking.yaml`. The scene loads the GLB lot only when the
+configured asset slot IDs match the active slots; other layouts use generated
+geometry at their configured coordinates. The scene shows live occupancy.
+Drag to rotate it, scroll to zoom, or select a space in the model or
+list. Enter an RFID value and use **Simulate entry** to allocate a space and
+watch the vehicle drive into the returned slot. Select an occupied space (or
+enter its RFID) and use **Simulate exit** to watch it leave. The page also shows
+selected optimizer/predictor settings, live occupancy, comparison tables,
+forecast target time, and stable prediction fallback state.
+The dashboard consumes `/api/parking/events/stream` and replays durable SQLite
+events in order. Entry assignment and exit events are stored in the same
+transaction as their parking changes. The ESP32 reports RFID reads and gate
+open/close commands through `/api/parking/hardware-events`, retrying unacknowledged
+reports from nonvolatile storage. The scene starts controller car motion when
+the gate-open report arrives and moves the gate graphic from gate reports.
+Parking status still refreshes every 1.5 seconds for reconciliation and camera
+occupancy changes; insight panels refresh every 10 seconds. Gate reports reflect
+servo commands, since the controller has no physical position sensor.
+
+The editable model source is `scripts/build_parking_assets.mjs`. To rebuild
+`backend/app/static/models/parking-lot.glb` and `sedan.glb`, run `npm install`
+then `npm run build:assets`. The exported GLB files are served with the app;
+Node is only needed to regenerate them.
 
 Copy `.env.example` to `.env` to override local configuration. Hardware mode
 requires both `SMART_PARKING_MODE=hardware` and

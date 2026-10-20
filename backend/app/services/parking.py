@@ -32,10 +32,11 @@ class ParkingService:
             request.rfid_uid,
             request.idempotency_key,
             lambda slots: self._allocate(request, slots),
+            request.source,
         )
 
     def exit(self, request: VehicleOperationRequest) -> ExitResponse:
-        return self.database.exit_vehicle(request.rfid_uid, request.idempotency_key)
+        return self.database.exit_vehicle(request.rfid_uid, request.idempotency_key, request.source)
 
     def status(self) -> ParkingStatusResponse:
         return self.database.parking_status()

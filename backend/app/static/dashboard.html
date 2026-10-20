@@ -1,87 +1,27 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Smart Parking Dashboard</title>
-    <link rel="stylesheet" href="/static/dashboard.css">
-    <script id="dashboard-bootstrap" type="application/json">__DASHBOARD_BOOTSTRAP__</script>
-    <script src="/static/dashboard.js" defer></script>
-  </head>
-  <body>
-    <main class="dashboard-shell">
-      <header class="masthead">
-        <div>
-          <p class="eyebrow">Operations console</p>
-          <h1>Smart Parking</h1>
-        </div>
-        <p id="refresh-status" class="refresh-status" role="status">Loading live data…</p>
-      </header>
-
-      <p id="dashboard-error" class="dashboard-error" role="alert" hidden></p>
-
-      <section class="summary-grid" aria-label="Current configuration and forecast">
-        <article class="summary-card">
-          <p class="label">Selected optimizer</p>
-          <p id="selected-optimizer" class="summary-value">—</p>
-        </article>
-        <article class="summary-card">
-          <p class="label">Selected predictor</p>
-          <p id="selected-predictor" class="summary-value">—</p>
-        </article>
-        <article class="summary-card">
-          <p class="label">Live occupancy</p>
-          <p id="occupancy-summary" class="summary-value">—</p>
-        </article>
-      </section>
-
-      <section class="panel" aria-labelledby="forecast-heading">
-        <div class="panel-heading">
-          <div>
-            <p class="eyebrow">Next five-minute bucket</p>
-            <h2 id="forecast-heading">Occupancy forecast</h2>
-          </div>
-          <p id="forecast-model" class="pill">—</p>
-        </div>
-        <dl class="forecast-details">
-          <div><dt>Predicted occupancy</dt><dd id="forecast-occupancy">—</dd></div>
-          <div><dt>Forecast target</dt><dd id="forecast-target">—</dd></div>
-          <div><dt>Runtime state</dt><dd id="forecast-fallback">—</dd></div>
-        </dl>
-      </section>
-
-      <section class="panel" aria-labelledby="slots-heading">
-        <div class="panel-heading">
-          <div>
-            <p class="eyebrow">Configuration-driven</p>
-            <h2 id="slots-heading">Parking slots</h2>
-          </div>
-        </div>
-        <div id="slot-grid" class="slot-grid" aria-live="polite"></div>
-      </section>
-
-      <section class="comparison-grid" aria-label="Benchmark comparisons">
-        <article class="panel comparison-panel">
-          <div class="panel-heading"><h2>Optimizer comparison</h2></div>
-          <div class="table-wrap">
-            <table>
-              <thead><tr><th>Algorithm</th><th>Slot</th><th>Cost</th><th>Iterations</th><th>Runtime</th></tr></thead>
-              <tbody id="optimizer-runs"></tbody>
-            </table>
-          </div>
-          <p id="optimizer-empty" class="empty-state" hidden>No optimizer runs yet.</p>
-        </article>
-        <article class="panel comparison-panel">
-          <div class="panel-heading"><h2>Predictor comparison</h2></div>
-          <div class="table-wrap">
-            <table>
-              <thead><tr><th>Model</th><th>MAE</th><th>MSE</th><th>RMSE</th><th>Latency</th></tr></thead>
-              <tbody id="predictor-runs"></tbody>
-            </table>
-          </div>
-          <p id="predictor-empty" class="empty-state" hidden>No trained predictor benchmarks yet.</p>
-        </article>
-      </section>
-    </main>
-  </body>
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="theme-color" content="#101a27">
+  <title>Parkflow · Live parking operations</title>
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/dashboard.css?v=2">
+  <script type="importmap">{"imports":{"three":"/static/three.module.js"}}</script>
+  <script id="dashboard-bootstrap" type="application/json">__DASHBOARD_BOOTSTRAP__</script>
+  <script src="/static/dashboard.js?v=7" defer></script>
+</head>
+<body>
+<div class="app-shell">
+  <aside class="rail" aria-label="Application navigation"><a class="brand-mark" href="/dashboard" aria-label="Parkflow dashboard">P<span>.</span></a><div class="rail-line"></div><a class="rail-icon active" href="#parking-scene" aria-label="Live overview">▦</a><a class="rail-icon" href="#slots-heading" aria-label="Parking spaces">⌗</a><a class="rail-icon" href="#insights-heading" aria-label="Forecasts">◷</a><span class="rail-spacer"></span><span class="rail-bottom">PF<br>01</span></aside>
+  <main class="dashboard-shell">
+    <header class="masthead"><div><p class="eyebrow">OPERATIONS / LIVE OVERVIEW</p><h1>Parking, in motion<span class="title-dot">.</span></h1><p class="subheading">A live view of every space, every arrival, and every departure.</p></div><div class="header-right"><span class="live-badge"><span class="live-dot"></span> LIVE SYSTEM</span><span id="refresh-status" class="refresh-status" role="status">Connecting…</span></div></header>
+    <p id="dashboard-error" class="dashboard-error" role="alert" hidden></p>
+    <section class="hero-grid" aria-label="Live parking lot and simulation controls">
+      <div class="scene-card"><div class="scene-topbar"><div><span class="scene-overline">SITE VISUALIZATION</span><h2>Lot overview <span class="heading-arrow">↗</span></h2></div><span class="scene-live"><span class="live-dot"></span> REAL TIME</span></div><div id="parking-scene" class="parking-scene" role="img" aria-label="Interactive 3D parking lot showing live occupied spaces"><div id="scene-loading" class="scene-loading">Building parking lot…</div><div class="scene-watermark">PARKFLOW <span>01 / LIVE</span></div><div class="scene-hint">DRAG TO ROTATE <span>·</span> SCROLL TO ZOOM</div></div><div class="scene-footer"><div class="legend"><span><i class="legend-dot free"></i> Available</span><span><i class="legend-dot busy"></i> Occupied</span><span><i class="legend-dot moving"></i> In motion</span></div><button id="reset-view" class="text-button" type="button">Reset view ↗</button></div></div>
+      <div class="control-stack"><section class="control-card" aria-labelledby="simulate-heading"><div class="card-topline"><span class="section-index">01 / SIMULATION</span><span class="tiny-icon">↗</span></div><h2 id="simulate-heading">Move a vehicle</h2><p class="card-description">Simulate a gate event and watch the car travel to its assigned space.</p><label for="vehicle-uid" class="input-label">VEHICLE RFID / ID</label><input id="vehicle-uid" name="vehicle-uid" type="text" maxlength="128" placeholder="e.g. CAR-001" autocomplete="off"><div class="action-grid"><button id="entry-button" class="action-button primary" type="button"><span class="action-icon">↘</span><span>Simulate entry<small>Allocate & park</small></span><span class="action-chevron">↗</span></button><button id="exit-button" class="action-button secondary" type="button"><span class="action-icon">↗</span><span>Simulate exit<small>Leave the lot</small></span><span class="action-chevron">↗</span></button></div><p id="simulation-message" class="simulation-message" role="status" aria-live="polite">Enter a vehicle ID to begin.</p></section><section class="occupancy-card" aria-label="Occupancy summary"><div class="card-topline"><span class="section-index">02 / CAPACITY</span><span class="tiny-icon">◉</span></div><div class="occupancy-main"><strong id="occupancy-count">—</strong><span><b id="occupancy-total">/ —</b><br>spaces occupied</span></div><div class="progress-track"><div id="occupancy-progress" class="progress-fill"></div></div><div class="capacity-bottom"><span><i class="legend-dot free"></i><b id="available-count">—</b> available now</span><span id="occupancy-rate">—%</span></div></section></div>
+    </section>
+    <section class="lower-grid" aria-label="Spaces and live insights"><section class="spaces-panel" aria-labelledby="slots-heading"><div class="panel-heading"><div><p class="eyebrow">THE GROUND TRUTH</p><h2 id="slots-heading">Parking spaces <span id="space-count" class="count-chip">—</span></h2></div><span class="section-note">SELECT A SPACE TO INSPECT</span></div><div id="slot-grid" class="slot-grid" aria-live="polite"></div><div id="selected-space" class="selected-space">Select a space in the model or list to view its details.</div></section><section class="insights-panel" aria-labelledby="insights-heading"><div class="panel-heading"><div><p class="eyebrow">LOOKING AHEAD</p><h2 id="insights-heading">Live insights</h2></div><span class="insight-orbit">◉</span></div><div class="forecast-feature"><span class="forecast-label">PREDICTED OCCUPANCY <span>↗</span></span><div class="forecast-number" id="forecast-occupancy">—</div><div class="forecast-bar"><span id="forecast-progress"></span></div><p>At <span id="forecast-target">—</span></p></div><dl class="insight-list"><div><dt>Forecast model</dt><dd id="forecast-model">—</dd></div><div><dt>Runtime state</dt><dd id="forecast-fallback">—</dd></div><div><dt>Allocation engine</dt><dd id="selected-optimizer">—</dd></div><div><dt>Selected predictor</dt><dd id="selected-predictor">—</dd></div></dl></section></section>
+    <section class="benchmark-panel" aria-label="Model benchmarks"><div class="panel-heading"><div><p class="eyebrow">SYSTEM PERFORMANCE</p><h2>Model benchmarks</h2></div><span class="section-note">LATEST RUNS</span></div><div class="comparison-grid"><div><h3>Optimizer comparison</h3><div class="table-wrap"><table><thead><tr><th>Algorithm</th><th>Slot</th><th>Cost</th><th>Iterations</th><th>Runtime</th></tr></thead><tbody id="optimizer-runs"></tbody></table></div><p id="optimizer-empty" class="empty-state" hidden>No optimizer runs yet.</p></div><div><h3>Predictor comparison</h3><div class="table-wrap"><table><thead><tr><th>Model</th><th>MAE</th><th>MSE</th><th>RMSE</th><th>Latency</th></tr></thead><tbody id="predictor-runs"></tbody></table></div><p id="predictor-empty" class="empty-state" hidden>No trained predictor benchmarks yet.</p></div></div></section>
+  </main>
+</div>
+</body>
 </html>

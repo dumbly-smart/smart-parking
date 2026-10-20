@@ -56,6 +56,9 @@ bool gateOpen = false;
 uint32_t gateCloseAtMs = 0;
 bool pendingOperation = false;
 bool pendingGateDone = false;
+uint8_t telemetryMask = 0;
+uint8_t telemetryAck = 0;
+uint32_t nextTelemetryMs = 0;
 String pendingUid;
 String pendingKey;
 String pendingType;
@@ -106,11 +109,12 @@ String backendUrl(const char *path) {
   return base + path;
 }
 
-HttpResult requestHttp(const String &url, const String &method, const String &body = "") {
+HttpResult requestHttp(const String &url, const String &method, const String &body = "",
+                       uint32_t timeoutMs = kHttpTimeoutMs) {
   HttpResult result;
   HTTPClient http;
   WiFiClient network;
-  http.setTimeout(kHttpTimeoutMs);
+  http.setTimeout(timeoutMs);
   if (!http.begin(network, url)) return result;
   http.addHeader("Accept", "application/json");
   if (method == "POST") http.addHeader("Content-Type", "application/json");
@@ -200,6 +204,8 @@ bool persistPending() {
       preferences.putString("key", pendingKey) == 0 ||
       preferences.putString("type", pendingType) == 0 ||
       preferences.putBool("gate_done", pendingGateDone) != 1 ||
+      preferences.putUChar("telemetry", telemetryMask) != 1 ||
+      preferences.putUChar("telemetry_ack", telemetryAck) != 1 ||
       preferences.putBool("pending", true) != 1) return false;
   pendingOperation = true;
   return true;
@@ -212,11 +218,15 @@ void clearPending() {
   preferences.remove("key");
   preferences.remove("type");
   preferences.putBool("gate_done", false);
+  preferences.putUChar("telemetry", 0);
+  preferences.putUChar("telemetry_ack", 0);
   pendingUid = "";
   pendingKey = "";
   pendingType = "";
   pendingOperation = false;
   pendingGateDone = false;
+  telemetryMask = 0;
+  telemetryAck = 0;
   assignedSlotId = 0;
   assignedSlotName = "";
   retryDelayMs = kRetryInitialMs;
@@ -239,6 +249,8 @@ bool beginOperation(const String &uid, const String &operation) {
   if (!pendingKey.length()) return false;
   pendingType = operation;
   pendingGateDone = false;
+  telemetryMask = 1;
+  telemetryAck = 0;
   if (!persistPending()) {
     pendingUid = "";
     pendingKey = "";
@@ -288,16 +300,45 @@ bool openGateOnce() {
   gateServo.write(SERVO_OPEN_DEGREES);
   gateOpen = true;
   gateCloseAtMs = millis() + GATE_OPEN_MILLISECONDS;
+  telemetryMask |= 2;
+  preferences.putUChar("telemetry", telemetryMask);
   return true;
+}
+
+void flushTelemetry() {
+  if (!pendingOperation || WiFi.status() != WL_CONNECTED ||
+      static_cast<int32_t>(millis() - nextTelemetryMs) < 0) return;
+  for (uint8_t phase = 1; phase <= 4; phase <<= 1) {
+    if (!(telemetryMask & phase) || (telemetryAck & phase)) continue;
+    JsonDocument payload;
+    payload["event_type"] = phase == 1 ? "rfid_read" : phase == 2 ? "gate_opened" : "gate_closed";
+    payload["operation"] = pendingType;
+    payload["operation_key"] = pendingKey;
+    payload["rfid_uid"] = pendingUid;
+    String encoded;
+    serializeJson(payload, encoded);
+    const HttpResult result = requestHttp(backendUrl("/api/parking/hardware-events"), "POST", encoded,
+                                          gateOpen ? 350 : kHttpTimeoutMs);
+    if (result.code != HTTP_CODE_OK && result.code != HTTP_CODE_CREATED) {
+      nextTelemetryMs = millis() + 1000;
+      return;
+    }
+    telemetryAck |= phase;
+    preferences.putUChar("telemetry_ack", telemetryAck);
+  }
+  if (pendingGateDone && !gateOpen && (telemetryMask & 4) &&
+      (telemetryAck & telemetryMask) == telemetryMask) clearPending();
 }
 
 void processPendingOperation() {
   if (!pendingOperation || gateOpen || !storageReady || WiFi.status() != WL_CONNECTED ||
       static_cast<int32_t>(millis() - nextRetryMs) < 0) return;
+  if (pendingGateDone || !(telemetryAck & 1)) return;
 
   JsonDocument request;
   request["rfid_uid"] = pendingUid;
   request["idempotency_key"] = pendingKey;
+  request["source"] = "controller";
   String encoded;
   serializeJson(request, encoded);
   const char *path = pendingType == "entry" ? "/api/vehicle/entry" : "/api/vehicle/exit";
@@ -341,8 +382,6 @@ void processPendingOperation() {
       showMessage("Storage/gate error", "Gate remains closed", "Retrying safely");
       nextRetryMs = millis() + retryDelayMs;
       retryDelayMs = min(retryDelayMs * 2, kRetryMaximumMs);
-    } else if (pendingGateDone) {
-      clearPending();  // A reboot after opening must never open the gate a second time.
     }
     return;
   }
@@ -441,7 +480,10 @@ void updateGate() {
   if (gateOpen && static_cast<int32_t>(millis() - gateCloseAtMs) >= 0) {
     gateServo.write(SERVO_CLOSED_DEGREES);
     gateOpen = false;
-    if (pendingOperation) clearPending();
+    if (pendingOperation) {
+      telemetryMask |= 4;
+      preferences.putUChar("telemetry", telemetryMask);
+    }
     showMessage("Gate closed", "Ready for next vehicle");
   }
 }
@@ -474,6 +516,12 @@ void setup() {
     pendingKey = preferences.getString("key", "");
     pendingType = preferences.getString("type", "");
     pendingGateDone = preferences.getBool("gate_done", false);
+    telemetryMask = preferences.getUChar("telemetry", 0);
+    telemetryAck = preferences.getUChar("telemetry_ack", 0);
+    if (pendingGateDone) {
+      telemetryMask |= 4;
+      preferences.putUChar("telemetry", telemetryMask);
+    }
     if (!pendingUid.length() || !pendingKey.length() ||
         (pendingType != "entry" && pendingType != "exit")) clearPending();
     else showMessage("Recovering request", "Using saved idempotency key");
@@ -491,6 +539,7 @@ void loop() {
   refreshLeds();
 
   if (WiFi.status() == WL_CONNECTED) {
+    flushTelemetry();
     if (millis() - lastStatusMs >= STATUS_POLL_MILLISECONDS) {
       lastStatusMs = millis();
       SlotState latest;

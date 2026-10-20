@@ -18,6 +18,18 @@ def dashboard(request: Request) -> HTMLResponse:
         {
             "selected_optimizer": request.app.state.settings.selected_optimizer,
             "selected_predictor": request.app.state.settings.selected_predictor,
+            "scene": {
+                "asset": request.app.state.settings.parking.scene.asset,
+                "asset_slot_ids": request.app.state.settings.parking.scene.asset_slot_ids,
+                "width": request.app.state.settings.parking.scene.width,
+                "slots": {
+                    str(slot.id): slot.scene.model_dump() if slot.scene else None
+                    for slot in request.app.state.settings.parking.slots
+                },
+            },
         }
     )
-    return HTMLResponse(_TEMPLATE.replace("__DASHBOARD_BOOTSTRAP__", bootstrap))
+    return HTMLResponse(
+        _TEMPLATE.replace("__DASHBOARD_BOOTSTRAP__", bootstrap),
+        headers={"Cache-Control": "no-store, max-age=0"},
+    )

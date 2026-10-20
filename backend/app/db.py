@@ -77,6 +77,20 @@ CREATE TABLE IF NOT EXISTS occupancy_events (
     observed_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
 
+CREATE TABLE IF NOT EXISTS parking_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_type TEXT NOT NULL,
+    source TEXT NOT NULL,
+    operation TEXT NOT NULL,
+    operation_key TEXT NOT NULL,
+    rfid_uid TEXT NOT NULL,
+    slot_id INTEGER REFERENCES parking_slots(id),
+    session_id INTEGER REFERENCES parking_sessions(id),
+    occurred_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    UNIQUE(operation_key, event_type)
+);
+CREATE INDEX IF NOT EXISTS parking_events_by_id ON parking_events(id);
+
 CREATE TABLE IF NOT EXISTS context_samples (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     occupancy_count INTEGER NOT NULL CHECK (occupancy_count >= 0),
@@ -486,6 +500,7 @@ class Database:
         rfid_uid: str,
         idempotency_key: str,
         allocate: Callable[[tuple[ParkingSlotRecord, ...]], AllocationResult],
+        source: str = "api",
     ) -> EntryResponse:
         with self.connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
@@ -618,9 +633,15 @@ class Database:
                 allocation_cost=result.best_cost,
                 entered_at=stored["entered_at"],
             )
+            connection.execute(
+                """INSERT INTO parking_events
+                   (event_type, source, operation, operation_key, rfid_uid, slot_id, session_id)
+                   VALUES ('slot_assigned', ?, 'entry', ?, ?, ?, ?)""",
+                (source, idempotency_key, rfid_uid, result.chosen_slot_id, session_id),
+            )
         return response
 
-    def exit_vehicle(self, rfid_uid: str, idempotency_key: str) -> ExitResponse:
+    def exit_vehicle(self, rfid_uid: str, idempotency_key: str, source: str = "api") -> ExitResponse:
         with self.connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
             entry_key = connection.execute(
@@ -698,13 +719,63 @@ class Database:
                 slot_name=active["slot_name"],
                 exited_at=exited_at,
             )
+            connection.execute(
+                """INSERT INTO parking_events
+                   (event_type, source, operation, operation_key, rfid_uid, slot_id, session_id)
+                   VALUES ('vehicle_exited', ?, 'exit', ?, ?, ?, ?)""",
+                (source, idempotency_key, rfid_uid, active["slot_id"], active["session_id"]),
+            )
         return response
+
+    def latest_event_id(self) -> int:
+        with self.connect() as connection:
+            return int(connection.execute("SELECT COALESCE(MAX(id), 0) FROM parking_events").fetchone()[0])
+
+    def parking_events_after(self, after_id: int, limit: int = 100) -> list[dict[str, object]]:
+        with self.connect() as connection:
+            return [dict(row) for row in connection.execute(
+                "SELECT * FROM parking_events WHERE id > ? ORDER BY id LIMIT ?", (after_id, limit)
+            )]
+
+    def record_hardware_event(
+        self, event_type: str, operation: str, operation_key: str, rfid_uid: str,
+    ) -> dict[str, object]:
+        with self.connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            session = connection.execute(
+                """SELECT ps.id AS session_id, ps.slot_id, v.rfid_uid,
+                          ps.entry_idempotency_key, ps.exit_idempotency_key
+                   FROM parking_sessions ps JOIN vehicles v ON v.id = ps.vehicle_id
+                   WHERE ps.entry_idempotency_key = ? OR ps.exit_idempotency_key = ?""",
+                (operation_key, operation_key),
+            ).fetchone()
+            if event_type != "rfid_read" and (session is None or session["rfid_uid"] != rfid_uid):
+                raise ParkingConflict("unknown_operation", "hardware event has no matching operation")
+            if session is not None and session["rfid_uid"] != rfid_uid:
+                raise ParkingConflict("idempotency_conflict", "operation belongs to a different vehicle")
+            if session is not None and session[f"{operation}_idempotency_key"] != operation_key:
+                raise ParkingConflict("idempotency_conflict", "operation key belongs to a different operation")
+            connection.execute(
+                """INSERT INTO parking_events
+                   (event_type, source, operation, operation_key, rfid_uid, slot_id, session_id)
+                   VALUES (?, 'controller', ?, ?, ?, ?, ?)
+                   ON CONFLICT(operation_key, event_type) DO NOTHING""",
+                (event_type, operation, operation_key, rfid_uid,
+                 session["slot_id"] if session else None,
+                 session["session_id"] if session else None),
+            )
+            row = connection.execute(
+                "SELECT * FROM parking_events WHERE operation_key = ? AND event_type = ?",
+                (operation_key, event_type),
+            ).fetchone()
+            return dict(row)
 
     def parking_status(self) -> ParkingStatusResponse:
         order_expression = "CASE s.id " + " ".join(
             f"WHEN ? THEN {position}" for position in range(len(self._slot_order))
         ) + " ELSE ? END"
         with self.connect() as connection:
+            event_cursor = int(connection.execute("SELECT COALESCE(MAX(id), 0) FROM parking_events").fetchone()[0])
             rows = connection.execute(
                 f"""
                 SELECT s.id, s.name, s.walking_distance, s.zone, s.occupied,
@@ -718,7 +789,8 @@ class Database:
                 (*self._slot_order, len(self._slot_order)),
             ).fetchall()
         return ParkingStatusResponse(
-            slots=tuple(ParkingSlotStatus.model_validate(dict(row)) for row in rows)
+            slots=tuple(ParkingSlotStatus.model_validate(dict(row)) for row in rows),
+            event_cursor=event_cursor,
         )
 
     def save_optimizer_results(self, results: Sequence[AllocationResult]) -> None:

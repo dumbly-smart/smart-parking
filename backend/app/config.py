@@ -30,15 +30,35 @@ class AllocationConfig(BaseModel):
     weights: ObjectiveWeights = Field(default_factory=ObjectiveWeights)
 
 
+class ScenePoint(BaseModel):
+    x: float
+    z: float
+
+
+class SceneSlotConfig(BaseModel):
+    position: ScenePoint
+    heading: float
+    entry_route: list[ScenePoint] = Field(min_length=2)
+    exit_route: list[ScenePoint] = Field(min_length=2)
+
+
+class SceneConfig(BaseModel):
+    asset: str | None = None
+    asset_slot_ids: list[int] = Field(default_factory=list)
+    width: float = Field(default=17, gt=0)
+
+
 class SlotConfig(BaseModel):
     id: int = Field(ge=1)
     name: str = Field(min_length=1, max_length=32)
     walking_distance: float = Field(ge=0, le=1)
     zone: str = Field(min_length=1, max_length=32)
+    scene: SceneSlotConfig | None = None
 
 
 class ParkingConfig(BaseModel):
     allocation: AllocationConfig = Field(default_factory=AllocationConfig)
+    scene: SceneConfig = Field(default_factory=SceneConfig)
     slots: list[SlotConfig]
 
     @field_validator("slots")

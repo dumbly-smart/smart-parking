@@ -57,3 +57,6 @@ Thumbs.db
 
 # Local wheel-build output created by package-data verification.
 /build/
+
+# Local 3D asset build dependency
+node_modules/

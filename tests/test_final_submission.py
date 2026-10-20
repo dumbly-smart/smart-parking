@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 import pytest
 
 docx = pytest.importorskip("docx")
@@ -29,6 +31,24 @@ def test_final_report_is_single_column_and_uses_real_project_results(tmp_path) -
     )
     assert "vit.ac.in" in text
     assert "NOT TESTED" in text
+    captions = [
+        paragraph.text for paragraph in document.paragraphs if paragraph.style.name == "Caption"
+    ]
+    figure_numbers = [
+        int(match.group(1))
+        for caption in captions
+        if (match := re.match(r"Figure (\d+)\.", caption))
+    ]
+    table_numbers = [
+        int(match.group(1))
+        for caption in captions
+        if (match := re.match(r"Table (\d+)\.", caption))
+    ]
+    assert figure_numbers == list(range(1, 18))
+    assert table_numbers == list(range(1, 9))
+    assert "4,032" in text
+    assert "CH340 USB serial adapter" in text
+    assert "not resolved from the test host" in text
     assert len(document.sections) == 1
     assert document.sections[0]._sectPr.xml.count("<w:cols") == 1
     assert 'w:num="1"' in document.sections[0]._sectPr.xml

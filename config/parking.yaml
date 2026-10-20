@@ -4,24 +4,33 @@ allocation:
     congestion: 0.30
     waiting: 0.20
     fairness: 0.15
+scene:
+  asset: parking-lot.glb
+  asset_slot_ids: [1, 2, 3, 4, 5]
+  width: 18.35
 slots:
   - id: 1
     name: S1
     walking_distance: 0.20
     zone: north
+    scene: {position: {x: -3.85, z: -3.48}, heading: 1.5707963268, entry_route: [{x: -8.7, z: 0}, {x: -6.5, z: 0}, {x: -4.8, z: 0}, {x: -3.85, z: -1.3}, {x: -3.85, z: -3.48}], exit_route: [{x: -3.85, z: -3.48}, {x: -3.85, z: -1.3}, {x: -2.8, z: 0}, {x: 6.7, z: 0}, {x: 8.7, z: 0}]}
   - id: 2
     name: S2
     walking_distance: 0.35
     zone: north
+    scene: {position: {x: -3.85, z: 3.48}, heading: -1.5707963268, entry_route: [{x: -8.7, z: 0}, {x: -6.5, z: 0}, {x: -4.8, z: 0}, {x: -3.85, z: 1.3}, {x: -3.85, z: 3.48}], exit_route: [{x: -3.85, z: 3.48}, {x: -3.85, z: 1.3}, {x: -2.8, z: 0}, {x: 6.7, z: 0}, {x: 8.7, z: 0}]}
   - id: 3
     name: S3
     walking_distance: 0.50
     zone: central
+    scene: {position: {x: 0, z: -3.48}, heading: 1.5707963268, entry_route: [{x: -8.7, z: 0}, {x: -4.0, z: 0}, {x: -1.0, z: 0}, {x: 0, z: -1.3}, {x: 0, z: -3.48}], exit_route: [{x: 0, z: -3.48}, {x: 0, z: -1.3}, {x: 1.0, z: 0}, {x: 6.7, z: 0}, {x: 8.7, z: 0}]}
   - id: 4
     name: S4
     walking_distance: 0.70
     zone: south
+    scene: {position: {x: 0, z: 3.48}, heading: -1.5707963268, entry_route: [{x: -8.7, z: 0}, {x: -4.0, z: 0}, {x: -1.0, z: 0}, {x: 0, z: 1.3}, {x: 0, z: 3.48}], exit_route: [{x: 0, z: 3.48}, {x: 0, z: 1.3}, {x: 1.0, z: 0}, {x: 6.7, z: 0}, {x: 8.7, z: 0}]}
   - id: 5
     name: S5
     walking_distance: 0.90
     zone: south
+    scene: {position: {x: 3.85, z: -3.48}, heading: 1.5707963268, entry_route: [{x: -8.7, z: 0}, {x: -3.0, z: 0}, {x: 2.8, z: 0}, {x: 3.85, z: -1.3}, {x: 3.85, z: -3.48}], exit_route: [{x: 3.85, z: -3.48}, {x: 3.85, z: -1.3}, {x: 4.8, z: 0}, {x: 6.7, z: 0}, {x: 8.7, z: 0}]}
