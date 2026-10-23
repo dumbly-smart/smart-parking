@@ -15,6 +15,7 @@ from PIL import Image, ImageDraw, ImageTk
 from vision.models import RoiConfig
 
 DEFAULT_CAMERA_URL = "http://esp32-cam.local/capture"
+MAX_CAMERA_JPEG_BYTES = 5 * 1024 * 1024
 
 
 def build_roi_config(
@@ -67,6 +68,10 @@ def capture_jpeg(
 ) -> Image.Image:
     if not url.startswith(("http://", "https://")):
         raise ValueError("camera URL must use HTTP or HTTPS")
+    if timeout <= 0:
+        raise ValueError("camera timeout must be positive")
+    if maximum_bytes <= 0 or maximum_bytes > MAX_CAMERA_JPEG_BYTES:
+        raise ValueError("camera image size limit must be between 1 byte and 5 MiB")
     with urlopen(Request(url, headers={"Accept": "image/jpeg"}), timeout=timeout) as response:
         content_type = response.headers.get("Content-Type", "").split(";", 1)[0].lower()
         if content_type != "image/jpeg":

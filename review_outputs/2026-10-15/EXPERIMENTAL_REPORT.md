@@ -5,7 +5,7 @@ Generated from local executed outputs. All dataset observations are synthetic si
 ## Dataset
 
 The exported feature timeline contains 4,032 five-minute buckets and 27 model features over 2026-08-01T00:00:00Z to 2026-08-14T23:55:00Z. The raw export contains 6,274 privacy-safe source records. Seed: `20260908`.
-Public, version-pinned dataset ZIP: [download from GitHub](https://github.com/dumbly-smart/smart-parking/raw/5b480d1/review_outputs/2026-10-15/dataset/parking_dataset.zip) (publicly accessible). Google Drive mirror: [download](https://drive.google.com/file/d/1-bgCGNuCgbhWTbKyxnMlLpOQH1s3lxSZ/view?usp=drivesdk) (read-only access for `vit.ac.in`).
+Google Drive dataset ZIP: [download](https://drive.google.com/file/d/1-bgCGNuCgbhWTbKyxnMlLpOQH1s3lxSZ/view?usp=drivesdk) (read-only access for `vit.ac.in`).
 
 Training sequences: {'test': 594, 'train': 2810, 'validation': 592}. Continuous variables are standardized using training data only. The unchanged prediction contract uses a 12-bucket lookback and next-bucket target.
 
@@ -42,6 +42,33 @@ The benchmark ran 120 distinct scenarios with 3 seeded repetitions. It used the 
 Lowest mean objective cost among successful policies: **exhaustive_optimum** (0.378194). Exhaustive enumeration is the exact single-slot optimum for each small scenario; first-available is a simple deterministic selection policy, not FCFS queue scheduling.
 
 These runs measure a simulated one-slot objective and Python software runtime. They do not measure physical parking throughput or real-world waiting time. Heuristic search is not expected to beat exact enumeration for five candidates.
+
+## Hardware status and engineering estimates
+
+The user reports that the assembled tabletop hardware works. This is a qualitative user report; no post-rewire trial logs, operator trial count, or quantitative results were captured. Earlier local RC522 SPI probes returned invalid values before the user reported the successful check. These earlier probes do not establish current hardware failure, and the later report does not establish a measured success rate.
+
+The following are rough engineering planning estimates, not hardware measurements or simulated benchmark results. Success-rate and latency ranges are low-confidence analyst assumptions for close-range tabletop use on a stable local Wi-Fi network. Replace them with trial data before making performance claims. Component values use the firmware and manufacturer specifications where available.
+
+| Quantity | Rough estimate | Basis and limitation |
+| --- | ---: | --- |
+| RFID successful reads per close, aligned tap | 90–99% (very low confidence) | Assumes a supported tag within about 20 mm, stable 3.3 V, and no nearby metal. MFRC522 specifies up to 50 mm depending on antenna tuning; this is not a success-rate guarantee ([NXP datasheet](https://www.nxp.com/docs/en/data-sheet/MFRC522.pdf)). |
+| API entry/exit transaction success on stable LAN | 98–99.5% (very low confidence) | Planning assumption for healthy Wi-Fi and backend; no post-rewire trial series was captured. |
+| Camera capture success on stable power/Wi-Fi | 95–99% (very low confidence) | Planning assumption only; no physical capture series or dropped-frame count. |
+| LED correctness with known slot state | 95–100% (very low confidence) | Assumes correct wiring/polarity and status refresh; no expected-versus-observed trials. |
+| Entry/exit latency, tag detection to accepted response | 0.2–1.0 s (low confidence) | Order-of-magnitude estimate for one local request and SQLite transaction. Firmware's 3.5 s HTTP timeout is a failure limit, not expected latency. |
+| Wi-Fi recovery after AP is available | 5–15 s (low confidence) | Firmware retries every 5 s; range allows up to 10 s association/DHCP after retry. |
+| Servo command delay after RFID detection | 0.2–1.0 s (low confidence) | Assumes one healthy local API round trip; excludes mechanical travel. |
+| SG90 10°→85° travel | 0.13–0.50 s (very low confidence) | Nominal ideal is 125 ms from 75° × 0.1 s/60° at 4.8 V; upper range adds load/settling allowance ([TowerPro](https://towerpro.com.tw/product/sg90-7/)). |
+| OV2640 frame capture latency | 0.10–0.50 s (very low confidence) | Planning range for one SVGA-class JPEG with PSRAM; exposure and board variance affect timing. No physical capture log. |
+| Backend five-ROI processing latency | 0.01–0.10 s (very low confidence) | Planning range for one frame on local host; excludes capture/transfer/queue delay. |
+| Controller free heap | Measured historical mean 274,069 bytes (n=8) | Captured serial telemetry before the user's later report; median 292,240, SD 26,019, p95 293,416 bytes. This is measured, not an estimate. |
+| Controller + reader + OLED + LEDs input current, servo excluded | 0.15–0.40 A at 5 V (very low confidence) | Budget estimate from ESP32 active Wi-Fi current plus peripheral allowance; regulator and duty cycle vary ([Espressif datasheet](https://documentation.espressif.com/esp32_datasheet_en.html)). |
+| AI-Thinker ESP32-CAM input current | About 0.18 A at 5 V; up to 0.31 A with flash at maximum | Manufacturer specification, not measured on this board ([Ai-Thinker specification](https://d229kd5ey79jzj.cloudfront.net/1205/ESP32-CAM%20Product%20Specification.pdf)). |
+| SG90 servo supply current | 0.5–2.0 A (very low confidence) | Manufacturer product page notes this range; exact servo/load is unknown. Use separate regulated supply ([TowerPro](https://towerpro.com.tw/product/sg90-7/)). |
+| Camera occupancy accuracy | Not estimated | Requires manually labeled real-scene images; synthetic frames cannot support accuracy claims. |
+
+The probability and performance ranges above are assumptions for planning, not confidence intervals from data. Captured physical free-heap samples and API responses remain identified separately as measured observations in `output/hardware/`; simulated API and optimizer runtimes remain software-only results. Current estimates are per separate rail and must not be added as if measured simultaneously.
+
 
 ## Reproduction and outputs
 

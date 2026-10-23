@@ -641,7 +641,9 @@ class Database:
             )
         return response
 
-    def exit_vehicle(self, rfid_uid: str, idempotency_key: str, source: str = "api") -> ExitResponse:
+    def exit_vehicle(
+        self, rfid_uid: str, idempotency_key: str, source: str = "api"
+    ) -> ExitResponse:
         with self.connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
             entry_key = connection.execute(
@@ -729,7 +731,8 @@ class Database:
 
     def latest_event_id(self) -> int:
         with self.connect() as connection:
-            return int(connection.execute("SELECT COALESCE(MAX(id), 0) FROM parking_events").fetchone()[0])
+            row = connection.execute("SELECT COALESCE(MAX(id), 0) FROM parking_events").fetchone()
+            return int(row[0])
 
     def parking_events_after(self, after_id: int, limit: int = 100) -> list[dict[str, object]]:
         with self.connect() as connection:
@@ -750,11 +753,17 @@ class Database:
                 (operation_key, operation_key),
             ).fetchone()
             if event_type != "rfid_read" and (session is None or session["rfid_uid"] != rfid_uid):
-                raise ParkingConflict("unknown_operation", "hardware event has no matching operation")
+                raise ParkingConflict(
+                    "unknown_operation", "hardware event has no matching operation"
+                )
             if session is not None and session["rfid_uid"] != rfid_uid:
-                raise ParkingConflict("idempotency_conflict", "operation belongs to a different vehicle")
+                raise ParkingConflict(
+                    "idempotency_conflict", "operation belongs to a different vehicle"
+                )
             if session is not None and session[f"{operation}_idempotency_key"] != operation_key:
-                raise ParkingConflict("idempotency_conflict", "operation key belongs to a different operation")
+                raise ParkingConflict(
+                    "idempotency_conflict", "operation key belongs to a different operation"
+                )
             connection.execute(
                 """INSERT INTO parking_events
                    (event_type, source, operation, operation_key, rfid_uid, slot_id, session_id)
@@ -775,7 +784,10 @@ class Database:
             f"WHEN ? THEN {position}" for position in range(len(self._slot_order))
         ) + " ELSE ? END"
         with self.connect() as connection:
-            event_cursor = int(connection.execute("SELECT COALESCE(MAX(id), 0) FROM parking_events").fetchone()[0])
+            cursor_row = connection.execute(
+                "SELECT COALESCE(MAX(id), 0) FROM parking_events"
+            ).fetchone()
+            event_cursor = int(cursor_row[0])
             rows = connection.execute(
                 f"""
                 SELECT s.id, s.name, s.walking_distance, s.zone, s.occupied,

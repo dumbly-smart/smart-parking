@@ -335,3 +335,31 @@ Keep prediction, allocation, persistence, and camera occupancy processing on the
 ### Consequences
 
 The existing simulation and backend contracts remain usable without hardware. A local network and server are required for physical operation; the unauthenticated APIs must stay on a trusted LAN. Compilation and software tests do not prove electrical or physical behavior, which remains a manual bench-validation task.
+
+## ADR-015: Physical evaluation records are provenance-tagged, never synthesized
+
+- Date: 2026-10-20
+- Status: Accepted
+
+### Context
+
+The project needs quantitative hardware evidence without conflating backend
+tests, generated observations, or firmware commands with measurements from
+physical equipment. Hardware-dependent work is currently blocked by missing
+private device configuration and unverified board wiring.
+
+### Decision
+
+Emit privacy-safe JSON metrics on the controller and camera serial streams and
+capture those events as timestamped JSONL. Operator observations are explicitly
+required where firmware cannot observe the physical result (RFID trial misses,
+LED correctness, mechanical servo travel, and power). Export summary CSV/JSON
+with provenance and report absent metrics as `NOT TESTED`. The servo's command
+delay is not described as mechanical response time.
+
+### Consequences
+
+Software and synthetic evidence remain separate from physical measurements.
+Serial output excludes RFID UIDs, image content, credentials, and device/network
+identifiers. Hardware latency, camera quality, power, and electrical safety
+remain claims to validate on the exact assembled boards.

@@ -1,0 +1,60 @@
+{
+  "event_count": 8,
+  "generated_at_utc": "2026-10-20T18:57:26.262Z",
+  "metrics": {
+    "api_transaction_success_rate": {
+      "count": 0,
+      "status": "NOT TESTED"
+    },
+    "camera_capture_latency_ms": {
+      "count": 0,
+      "status": "NOT TESTED"
+    },
+    "camera_capture_success_rate": {
+      "count": 0,
+      "status": "NOT TESTED"
+    },
+    "camera_processing_latency_ms": {
+      "count": 0,
+      "status": "NOT TESTED"
+    },
+    "entry_response_latency_ms": {
+      "count": 0,
+      "status": "NOT TESTED"
+    },
+    "exit_response_latency_ms": {
+      "count": 0,
+      "status": "NOT TESTED"
+    },
+    "free_heap_bytes": {
+      "count": 8,
+      "mean": 274069.0,
+      "median": 292240.0,
+      "p95": 293416.0,
+      "standard_deviation": 26018.94981958891,
+      "status": "MEASURED"
+    },
+    "led_correctness_rate": {
+      "count": 0,
+      "status": "NOT TESTED"
+    },
+    "power_current_ma": {
+      "count": 0,
+      "status": "NOT TESTED"
+    },
+    "rfid_read_success_rate": {
+      "count": 0,
+      "status": "NOT TESTED"
+    },
+    "servo_command_delay_ms": {
+      "count": 0,
+      "status": "NOT TESTED"
+    },
+    "wifi_recovery_seconds": {
+      "count": 0,
+      "status": "NOT TESTED"
+    }
+  },
+  "provenance": "captured hardware serial events and operator-entered observations",
+  "schema_version": 1
+}

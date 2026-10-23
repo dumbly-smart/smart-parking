@@ -1,0 +1,14 @@
+Quantity,Item,Specification / notes,Validation status
+1,ESP32 DevKit controller,ESP32-WROOM-32 compatible; firmware target esp32dev,Exact carrier revision not physically confirmed
+1,AI-Thinker ESP32-CAM,OV2640 camera; select AI-Thinker firmware pin map,Board variant not physically confirmed
+1,RC522 RFID reader,3.3V module and logic,Pin mapping from controller firmware
+1,SSD1306 OLED,128x64 I2C; 3.3V compatible logic and pull-ups; address 0x3C,Module details to confirm
+5,LED,One active-high slot indicator per slot,Use current limiting resistor
+5,Resistor,330 ohm series resistor,One per LED
+1,SG90 servo,Lightweight tabletop demonstration gate only,Not for real vehicle barrier
+1,Servo supply,Regulated 5V; >=1A initial provision,Check exact servo stall current and supply margin
+1,ESP32-CAM supply,Regulated 5V board supply sized to board/vendor requirements,Keep +5V rail separate from servo supply
+1,Controller USB supply,USB supply for ESP32 DevKit,Do not simultaneously feed board 5V pin unless carrier supports it
+2-5,RFID cards/tags,Test credentials; treat UIDs as identifiers,User provided / test media
+As needed,Breadboard and jumper wires,Short SPI/I2C runs; suitable wire for servo current,Check polarity and current rating
+As needed,Decoupling capacitor,Local bulk capacitance at servo supply per supply/servo requirements,Select from datasheets and bench behavior

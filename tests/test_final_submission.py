@@ -45,10 +45,18 @@ def test_final_report_is_single_column_and_uses_real_project_results(tmp_path) -
         if (match := re.match(r"Table (\d+)\.", caption))
     ]
     assert figure_numbers == list(range(1, 18))
-    assert table_numbers == list(range(1, 9))
+    assert table_numbers == list(range(1, 10))
     assert "4,032" in text
-    assert "CH340 USB serial adapter" in text
-    assert "not resolved from the test host" in text
+    hardware_evidence = repository / "output/hardware/controller_validation.json"
+    if hardware_evidence.exists():
+        assert "ESP32-D0WD-V3" in text
+        assert "authenticated status responses" in text
+        assert "RC522 VersionReg" in text
+        assert "0xFF" in text
+        assert "no flashing or board execution claimed" not in text
+        assert "marks all physical behaviors NOT TESTED" not in text
+    else:
+        assert "no physical controller validation evidence" in text
     assert len(document.sections) == 1
     assert document.sections[0]._sectPr.xml.count("<w:cols") == 1
     assert 'w:num="1"' in document.sections[0]._sectPr.xml

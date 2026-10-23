@@ -5,13 +5,16 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import math
 import os
 import signal
 import time
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from io import BytesIO
+from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
@@ -70,17 +73,20 @@ class CameraIngestor:
         config: CameraIngestConfig,
         *,
         opener: Callable[..., Any] = urlopen,
+        metrics_jsonl: Path | None = None,
+        api_token: str | None = None,
     ) -> None:
         self.config = config
         self._opener = opener
+        self._metrics_jsonl = metrics_jsonl
+        self._api_token = api_token
 
     def capture_once(self) -> dict[str, Any]:
         try:
             frame = self._capture()
             self._validate_jpeg(frame)
             payload = self._multipart(frame)
-            response = self._opener(
-                Request(
+            backend_request = Request(
                     f"{self.config.backend_url.rstrip('/')}/api/camera/occupancy",
                     data=payload,
                     headers={
@@ -88,16 +94,33 @@ class CameraIngestor:
                         "Content-Type": f"multipart/form-data; boundary={self._boundary}",
                     },
                     method="POST",
-                ),
+                )
+            if self._api_token:
+                backend_request.add_header("Authorization", f"Bearer {self._api_token}")
+            response = self._opener(
+                backend_request,
                 timeout=self.config.timeout_seconds,
             )
             with response:
+                processing_header = response.headers.get("X-Camera-Processing-Ms")
                 response_bytes = response.read(1024 * 1024 + 1)
             if len(response_bytes) > 1024 * 1024:
                 raise CameraIngestError("backend response exceeds 1 MiB")
             result = json.loads(response_bytes)
             if not isinstance(result, dict) or not isinstance(result.get("slots"), list):
                 raise CameraIngestError("backend returned an invalid occupancy response")
+            processing_ms = self._valid_metric(processing_header)
+            if processing_ms is not None and self._metrics_jsonl is not None:
+                self._write_metric(
+                    {
+                        "event": "camera_processing",
+                        "success": True,
+                        "latency_ms": processing_ms,
+                        "host_received_at_utc": datetime.now(UTC)
+                        .isoformat(timespec="milliseconds")
+                        .replace("+00:00", "Z"),
+                    }
+                )
             return result
         except CameraIngestError:
             raise
@@ -110,6 +133,22 @@ class CameraIngestor:
             UnidentifiedImageError,
         ) as exc:
             raise CameraIngestError("camera frame request or backend upload failed") from exc
+
+    @staticmethod
+    def _valid_metric(value: str | None) -> float | None:
+        if value is None:
+            return None
+        try:
+            parsed = float(value)
+        except ValueError:
+            return None
+        return parsed if math.isfinite(parsed) and parsed >= 0 else None
+
+    def _write_metric(self, event: dict[str, object]) -> None:
+        assert self._metrics_jsonl is not None
+        self._metrics_jsonl.parent.mkdir(parents=True, exist_ok=True)
+        with self._metrics_jsonl.open("a", encoding="utf-8") as output:
+            output.write(json.dumps(event, sort_keys=True) + "\n")
 
     @property
     def _boundary(self) -> str:
@@ -191,6 +230,16 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--timeout-seconds", type=float, default=5.0)
     parser.add_argument("--maximum-frame-bytes", type=int, default=5 * 1024 * 1024)
+    parser.add_argument(
+        "--metrics-jsonl",
+        type=Path,
+        help="append backend camera-processing timings from response headers",
+    )
+    parser.add_argument(
+        "--api-token",
+        default=os.getenv("SMART_PARKING_DEVICE_API_TOKEN"),
+        help="optional backend bearer token (prefer environment variable)",
+    )
     parser.add_argument("--once", action="store_true", help="capture and post one frame, then exit")
     args = parser.parse_args(argv)
     try:
@@ -202,7 +251,9 @@ def main(argv: list[str] | None = None) -> int:
                 timeout_seconds=args.timeout_seconds,
                 maximum_frame_bytes=args.maximum_frame_bytes,
                 maximum_backoff_seconds=min(MAX_BACKOFF_SECONDS, max(60.0, args.interval_seconds)),
-            )
+            ),
+            metrics_jsonl=args.metrics_jsonl,
+            api_token=args.api_token,
         )
         if args.once:
             response = ingestor.capture_once()

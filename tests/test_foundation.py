@@ -17,6 +17,7 @@ EXPECTED_TABLES = {
     "context_samples",
     "occupancy_events",
     "optimizer_runs",
+    "parking_events",
     "parking_sessions",
     "parking_slots",
     "prediction_demo_records",

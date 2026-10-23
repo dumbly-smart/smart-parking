@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
+import json
 import sqlite3
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from fastapi.testclient import TestClient
@@ -20,6 +23,7 @@ from backend.app.models.parking import (
     ParkingStatusResponse,
     VehicleOperationRequest,
 )
+from backend.app.routes.parking import parking_event_stream
 
 LEGACY_PARKING_SESSIONS_SCHEMA = """
 PRAGMA foreign_keys = ON;
@@ -85,6 +89,44 @@ def test_vehicle_operation_request_rejects_blank_identifier(field: str) -> None:
 
     with pytest.raises(ValidationError):
         VehicleOperationRequest.model_validate(values)
+
+
+def test_hardware_events_persist_and_stream_without_card_uid(tmp_path: Path) -> None:
+    settings = make_settings(tmp_path)
+    with TestClient(create_app(settings)) as client:
+        event = client.post(
+            "/api/parking/hardware-events",
+            json={
+                "event_type": "rfid_read",
+                "operation": "entry",
+                "operation_key": "controller-entry-1",
+                "rfid_uid": "CARD-PRIVATE",
+            },
+        )
+        assert event.status_code == 200
+        assert client.get("/api/parking/status").json()["event_cursor"] == event.json()["id"]
+        fake_request = SimpleNamespace(
+            headers={},
+            app=client.app,
+            is_disconnected=lambda: asyncio.sleep(0, result=False),
+        )
+
+        async def first_event_chunk() -> str:
+            response = await parking_event_stream(
+                fake_request, since_id=event.json()["id"] - 1
+            )
+            try:
+                return await anext(response.body_iterator)
+            finally:
+                await response.body_iterator.aclose()
+
+        chunk = asyncio.run(first_event_chunk())
+
+    streamed = json.loads(chunk.split("data: ", 1)[1])
+    assert chunk.startswith(f"id: {event.json()['id']}\nevent: parking\n")
+    assert streamed["event_type"] == "rfid_read"
+    assert "rfid_uid" not in streamed
+    assert "CARD-PRIVATE" not in json.dumps(streamed)
 
 
 def test_initialize_migrates_exit_idempotency_column(tmp_path: Path) -> None:

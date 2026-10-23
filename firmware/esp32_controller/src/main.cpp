@@ -45,6 +45,8 @@ bool displayReady = false;
 bool storageReady = false;
 bool gateReady = false;
 bool wifiStarted = false;
+bool wifiWasConnected = false;
+uint32_t wifiDisconnectedAtMs = 0;
 bool cardArmed = true;
 bool absenceTiming = false;
 uint32_t absentSinceMs = 0;
@@ -65,11 +67,26 @@ String pendingType;
 String assignedSlotName;
 int assignedSlotId = 0;
 String lastMessage = "Starting";
+uint32_t scanReceivedAtMs = 0;
 
 struct HttpResult {
   int code = 0;
   String body;
 };
+
+void emitMetric(const char *event, const char *operation = nullptr, bool hasSuccess = false,
+                bool success = false, uint32_t latencyMs = 0, int httpStatus = 0) {
+  JsonDocument metric;
+  metric["event"] = event;
+  metric["uptime_ms"] = millis();
+  if (operation) metric["operation"] = operation;
+  if (hasSuccess) metric["success"] = success;
+  if (latencyMs) metric["latency_ms"] = latencyMs;
+  if (httpStatus) metric["http_status"] = httpStatus;
+  metric["free_heap_bytes"] = ESP.getFreeHeap();
+  serializeJson(metric, Serial);
+  Serial.println();
+}
 
 void showMessage(const String &title, const String &line1 = "", const String &line2 = "") {
   lastMessage = title;
@@ -117,6 +134,8 @@ HttpResult requestHttp(const String &url, const String &method, const String &bo
   http.setTimeout(timeoutMs);
   if (!http.begin(network, url)) return result;
   http.addHeader("Accept", "application/json");
+  if (DEVICE_API_TOKEN[0] != '\0')
+    http.addHeader("Authorization", String("Bearer ") + DEVICE_API_TOKEN);
   if (method == "POST") http.addHeader("Content-Type", "application/json");
   result.code = method == "POST" ? http.POST(body) : http.GET();
   if (result.code > 0) {
@@ -248,6 +267,7 @@ bool beginOperation(const String &uid, const String &operation) {
   pendingKey = newIdempotencyKey();
   if (!pendingKey.length()) return false;
   pendingType = operation;
+  scanReceivedAtMs = millis();
   pendingGateDone = false;
   telemetryMask = 1;
   telemetryAck = 0;
@@ -300,6 +320,8 @@ bool openGateOnce() {
   gateServo.write(SERVO_OPEN_DEGREES);
   gateOpen = true;
   gateCloseAtMs = millis() + GATE_OPEN_MILLISECONDS;
+  emitMetric("gate_command", pendingType.c_str(), false, false,
+             millis() - scanReceivedAtMs);
   telemetryMask |= 2;
   preferences.putUChar("telemetry", telemetryMask);
   return true;
@@ -342,7 +364,11 @@ void processPendingOperation() {
   String encoded;
   serializeJson(request, encoded);
   const char *path = pendingType == "entry" ? "/api/vehicle/entry" : "/api/vehicle/exit";
+  const uint32_t requestStartedMs = millis();
   HttpResult response = requestHttp(backendUrl(path), "POST", encoded);
+  emitMetric("api_transaction", pendingType.c_str(), true,
+             response.code == HTTP_CODE_OK || response.code == HTTP_CODE_CREATED,
+             millis() - requestStartedMs, response.code);
 
   if (response.code == HTTP_CODE_OK || response.code == HTTP_CODE_CREATED) {
     JsonDocument result;
@@ -426,6 +452,7 @@ void pollCard() {
   }
 
   if (!rfid.PICC_IsNewCardPresent() || !rfid.PICC_ReadCardSerial()) return;
+  scanReceivedAtMs = millis();
   cardArmed = false;
   absenceTiming = false;
   const String uid = normalizedUid(rfid.uid);
@@ -439,6 +466,7 @@ void pollCard() {
     showMessage("Malformed RFID", "Card UID length invalid");
     return;
   }
+  emitMetric("rfid_read", nullptr, true, true);
   if (WiFi.status() != WL_CONNECTED) {
     setUnknownLeds();
     showMessage("Wi-Fi unavailable", "Gate remains closed");
@@ -460,8 +488,18 @@ void pollCard() {
 }
 
 void updateWifi() {
-  if (WIFI_SSID[0] == '\0') return;
-  if (WiFi.status() == WL_CONNECTED) return;
+  const bool connected = WiFi.status() == WL_CONNECTED;
+  if (connected && !wifiWasConnected) {
+    wifiWasConnected = true;
+    emitMetric("wifi_connected", nullptr, false, false,
+               wifiDisconnectedAtMs ? millis() - wifiDisconnectedAtMs : 0);
+    wifiDisconnectedAtMs = 0;
+  } else if (!connected && wifiWasConnected) {
+    wifiWasConnected = false;
+    wifiDisconnectedAtMs = millis();
+    emitMetric("wifi_disconnected");
+  }
+  if (WIFI_SSID[0] == '\0' || connected) return;
   setUnknownLeds();
   if (!wifiStarted) {
     WiFi.mode(WIFI_STA);
@@ -479,6 +517,8 @@ void updateWifi() {
 void updateGate() {
   if (gateOpen && static_cast<int32_t>(millis() - gateCloseAtMs) >= 0) {
     gateServo.write(SERVO_CLOSED_DEGREES);
+    emitMetric("gate_command", pendingType.c_str(), false, false,
+               millis() - scanReceivedAtMs);
     gateOpen = false;
     if (pendingOperation) {
       telemetryMask |= 4;
@@ -503,18 +543,29 @@ void setup() {
 
   SPI.begin(Pins::RfidSck, Pins::RfidMiso, Pins::RfidMosi, Pins::RfidSs);
   rfid.PCD_Init();
+  const byte readerVersion = rfid.PCD_ReadRegister(MFRC522::VersionReg);
+  JsonDocument readerMetric;
+  readerMetric["event"] = "rfid_reader";
+  readerMetric["uptime_ms"] = millis();
+  readerMetric["version_register"] = readerVersion;
+  readerMetric["ready"] = readerVersion != 0x00 && readerVersion != 0xFF;
+  readerMetric["free_heap_bytes"] = ESP.getFreeHeap();
+  serializeJson(readerMetric, Serial);
+  Serial.println();
   gateServo.setPeriodHertz(50);
   gateReady = gateServo.attach(Pins::GateServo, 500, 2400) >= 0;
   if (gateReady) gateServo.write(SERVO_CLOSED_DEGREES);
   else showMessage("Gate unavailable", "Gate remains closed");
 
   storageReady = preferences.begin("parking", false);
+  emitMetric("controller_boot");
   if (!storageReady) showMessage("Storage unavailable", "RFID requests disabled");
   pendingOperation = storageReady && preferences.getBool("pending", false);
   if (pendingOperation) {
     pendingUid = preferences.getString("uid", "");
     pendingKey = preferences.getString("key", "");
     pendingType = preferences.getString("type", "");
+    scanReceivedAtMs = millis();
     pendingGateDone = preferences.getBool("gate_done", false);
     telemetryMask = preferences.getUChar("telemetry", 0);
     telemetryAck = preferences.getUChar("telemetry_ack", 0);

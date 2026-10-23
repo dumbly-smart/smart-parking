@@ -10,7 +10,7 @@ class VehicleOperationRequest(BaseModel):
 
     rfid_uid: str = Field(min_length=1, max_length=128)
     idempotency_key: str = Field(min_length=1, max_length=128)
-    source: Literal["api", "controller", "simulation"] = "api"
+    source: Literal["api", "controller", "simulation"] = Field(default="api", exclude=True)
 
     @field_validator("rfid_uid", "idempotency_key", mode="before")
     @classmethod

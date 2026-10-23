@@ -2,10 +2,11 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from hmac import compare_digest
 
 from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import Response
 from pydantic import BaseModel
 
 from backend.app.config import Settings
@@ -70,6 +71,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         yield
 
     application = FastAPI(title="Smart Parking API", version="0.1.0", lifespan=lifespan)
+
+    @application.middleware("http")
+    async def device_api_auth(request: Request, call_next):
+        token = application_settings.device_api_token
+        if token is not None and request.url.path.startswith("/api/"):
+            expected = f"Bearer {token.get_secret_value()}"
+            received = request.headers.get("authorization", "")
+            if not compare_digest(received, expected):
+                return JSONResponse(
+                    status_code=401,
+                    content={"detail": "device authentication required"},
+                    headers={"WWW-Authenticate": "Bearer"},
+                )
+        return await call_next(request)
+
     application.mount("/static", DashboardStaticFiles(directory=STATIC_DIRECTORY), name="static")
     application.include_router(allocation_router)
     application.include_router(dashboard_router)

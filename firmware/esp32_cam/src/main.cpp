@@ -22,6 +22,7 @@ uint32_t lastWifiAttemptMs = 0;
 uint32_t lastCameraRetryMs = 0;
 constexpr uint32_t kReconnectMs = 5000;
 constexpr uint32_t kCameraRetryMs = 10000;
+constexpr uint32_t kClientWriteTimeoutMs = 10000;
 constexpr size_t kMaximumJpegBytes = 5 * 1024 * 1024;
 
 bool initializeCamera() {
@@ -68,6 +69,18 @@ void sendJson(int status, const char *message) {
   server.send(status, "application/json", body);
 }
 
+void logCaptureMetric(const char *status, const char *reason,
+                      uint32_t captureLatencyMs, size_t jpegBytes,
+                      size_t sentBytes) {
+  Serial.printf(
+      "{\"event\":\"camera_capture\",\"status\":\"%s\",\"reason\":\"%s\","
+      "\"capture_latency_ms\":%lu,\"jpeg_bytes\":%u,\"sent_bytes\":%u,"
+      "\"free_heap_bytes\":%u}\n",
+      status, reason, static_cast<unsigned long>(captureLatencyMs),
+      static_cast<unsigned>(jpegBytes), static_cast<unsigned>(sentBytes),
+      static_cast<unsigned>(ESP.getFreeHeap()));
+}
+
 void handleHealth() {
   if (WiFi.status() != WL_CONNECTED) {
     sendJson(503, "wifi_disconnected");
@@ -83,27 +96,50 @@ void handleHealth() {
 }
 
 void handleCapture() {
-  if (WiFi.status() != WL_CONNECTED || !cameraReady) {
+  if (WiFi.status() != WL_CONNECTED) {
+    logCaptureMetric("failure", "wifi_disconnected", 0, 0, 0);
     sendJson(503, "camera_unavailable");
     return;
   }
+  if (!cameraReady) {
+    logCaptureMetric("failure", "camera_unavailable", 0, 0, 0);
+    sendJson(503, "camera_unavailable");
+    return;
+  }
+  const uint32_t captureStartedAt = millis();
   camera_fb_t *frame = esp_camera_fb_get();
+  const uint32_t captureLatencyMs = millis() - captureStartedAt;
   if (frame == nullptr) {
+    logCaptureMetric("failure", "frame_buffer_unavailable", captureLatencyMs, 0, 0);
     sendJson(503, "capture_failed");
     return;
   }
   if (frame->format != PIXFORMAT_JPEG || frame->len == 0 || frame->len > kMaximumJpegBytes) {
+    const size_t jpegBytes = frame->len;
     esp_camera_fb_return(frame);
+    logCaptureMetric("failure", "invalid_jpeg_frame", captureLatencyMs, jpegBytes, 0);
     sendJson(500, "invalid_camera_frame");
     return;
   }
+  const size_t jpegBytes = frame->len;
   server.sendHeader("Cache-Control", "no-store, max-age=0");
   server.sendHeader("X-Content-Type-Options", "nosniff");
   server.setContentLength(frame->len);
   server.send(200, "image/jpeg", "");
-  const size_t written = server.client().write(frame->buf, frame->len);
+  WiFiClient client = server.client();
+  size_t written = 0;
+  const uint32_t startedAt = millis();
+  while (written < jpegBytes && client.connected() &&
+         millis() - startedAt < kClientWriteTimeoutMs) {
+    const size_t count = client.write(frame->buf + written, jpegBytes - written);
+    written += count;
+    if (count == 0) delay(1);
+  }
   esp_camera_fb_return(frame);
-  if (written == 0) Serial.println("Snapshot client disconnected before JPEG transfer completed");
+  const bool sentCompletely = written == jpegBytes;
+  logCaptureMetric(sentCompletely ? "success" : "failure",
+                   sentCompletely ? "none" : "transfer_incomplete",
+                   captureLatencyMs, jpegBytes, written);
 }
 
 void handleNotFound() { sendJson(404, "not_found"); }

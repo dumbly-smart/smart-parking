@@ -41,6 +41,7 @@ checkpoints/
 .pio/
 firmware/**/build/
 firmware/**/include/local_config.h
+/output/hardware/device-api.env
 
 # Editors and operating systems
 .idea/
@@ -60,3 +61,4 @@ Thumbs.db
 
 # Local 3D asset build dependency
 node_modules/
+/output/hardware/controller-before-flash.bin

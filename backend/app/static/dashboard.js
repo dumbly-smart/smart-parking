@@ -174,9 +174,9 @@ function connectEvents(cursor) {
   eventSource.addEventListener("parking", (message) => {
     const event = JSON.parse(message.data);
     applySceneEvent(event);
-    if (event.event_type === "rfid_read") setMessage(`RFID detected: ${event.rfid_uid}. Waiting for assignment…`);
-    if (event.event_type === "slot_assigned") setMessage(`${event.rfid_uid} assigned to space ${event.slot_id}.`, "success");
-    if (event.event_type === "vehicle_exited") setMessage(`${event.rfid_uid} departed from space ${event.slot_id}.`, "success");
+    if (event.event_type === "rfid_read") setMessage("RFID card detected. Waiting for assignment…");
+    if (event.event_type === "slot_assigned") setMessage(`Space ${event.slot_id} assigned to the arriving vehicle.`, "success");
+    if (event.event_type === "vehicle_exited") setMessage(`Vehicle departed from space ${event.slot_id}.`, "success");
     refreshStatus({ fresh: true });
   });
 }

@@ -1,0 +1,177 @@
+{
+  "by_occupancy": {
+    "ACO:empty": {
+      "mean_cost": 0.3297262558333333,
+      "mean_runtime_ms": 1.4767213333333333,
+      "runs": 60
+    },
+    "ACO:heavy": {
+      "mean_cost": 0.39529704833333335,
+      "mean_runtime_ms": 1.03503155,
+      "runs": 60
+    },
+    "ACO:light": {
+      "mean_cost": 0.3368879441666667,
+      "mean_runtime_ms": 1.3009510666666666,
+      "runs": 60
+    },
+    "ACO:moderate": {
+      "mean_cost": 0.3497884258333333,
+      "mean_runtime_ms": 1.1678119,
+      "runs": 60
+    },
+    "ACO:near_full": {
+      "mean_cost": 0.497196835,
+      "mean_runtime_ms": 0.93252525,
+      "runs": 60
+    },
+    "GA:empty": {
+      "mean_cost": 0.31801963333333333,
+      "mean_runtime_ms": 0.8167626833333334,
+      "runs": 60
+    },
+    "GA:heavy": {
+      "mean_cost": 0.39529704833333335,
+      "mean_runtime_ms": 0.8282198,
+      "runs": 60
+    },
+    "GA:light": {
+      "mean_cost": 0.33337320666666664,
+      "mean_runtime_ms": 0.8123201,
+      "runs": 60
+    },
+    "GA:moderate": {
+      "mean_cost": 0.34708109833333334,
+      "mean_runtime_ms": 0.8174771666666667,
+      "runs": 60
+    },
+    "GA:near_full": {
+      "mean_cost": 0.497196835,
+      "mean_runtime_ms": 0.8867979166666666,
+      "runs": 60
+    },
+    "PSO:empty": {
+      "mean_cost": 0.38486607666666667,
+      "mean_runtime_ms": 1.2903404166666668,
+      "runs": 60
+    },
+    "PSO:heavy": {
+      "mean_cost": 0.4289086641666667,
+      "mean_runtime_ms": 1.1165441833333334,
+      "runs": 60
+    },
+    "PSO:light": {
+      "mean_cost": 0.40860127749999997,
+      "mean_runtime_ms": 1.2251685833333332,
+      "runs": 60
+    },
+    "PSO:moderate": {
+      "mean_cost": 0.41271702166666663,
+      "mean_runtime_ms": 1.17233115,
+      "runs": 60
+    },
+    "PSO:near_full": {
+      "mean_cost": 0.497196835,
+      "mean_runtime_ms": 1.1185918333333333,
+      "runs": 60
+    },
+    "exhaustive_optimum:empty": {
+      "mean_cost": 0.31801963333333333,
+      "mean_runtime_ms": 0.0236644,
+      "runs": 60
+    },
+    "exhaustive_optimum:heavy": {
+      "mean_cost": 0.39529704833333335,
+      "mean_runtime_ms": 0.0109234,
+      "runs": 60
+    },
+    "exhaustive_optimum:light": {
+      "mean_cost": 0.33337320666666664,
+      "mean_runtime_ms": 0.019154983333333334,
+      "runs": 60
+    },
+    "exhaustive_optimum:moderate": {
+      "mean_cost": 0.34708109833333334,
+      "mean_runtime_ms": 0.015361833333333333,
+      "runs": 60
+    },
+    "exhaustive_optimum:near_full": {
+      "mean_cost": 0.497196835,
+      "mean_runtime_ms": 0.006854183333333333,
+      "runs": 60
+    },
+    "first_available:empty": {
+      "mean_cost": 0.5081572233333334,
+      "mean_runtime_ms": 0.00041388333333333336,
+      "runs": 60
+    },
+    "first_available:heavy": {
+      "mean_cost": 0.5023136983333333,
+      "mean_runtime_ms": 0.0003409,
+      "runs": 60
+    },
+    "first_available:light": {
+      "mean_cost": 0.481548935,
+      "mean_runtime_ms": 0.0003318833333333333,
+      "runs": 60
+    },
+    "first_available:moderate": {
+      "mean_cost": 0.44640668083333335,
+      "mean_runtime_ms": 0.00033066666666666666,
+      "runs": 60
+    },
+    "first_available:near_full": {
+      "mean_cost": 0.497196835,
+      "mean_runtime_ms": 0.0003497,
+      "runs": 60
+    }
+  },
+  "full_capacity_rejections": 300,
+  "interpretation": "Simulation-based single-slot objective and software runtime; not physical throughput or measured waiting time.",
+  "iterations": 30,
+  "occupancy_levels": {
+    "empty": 20,
+    "full": 20,
+    "heavy": 20,
+    "light": 20,
+    "moderate": 20,
+    "near_full": 20
+  },
+  "random_seed_formula": "20261015 + scenario_index * 101 + repetition",
+  "repeated_seeds_per_scenario": 3,
+  "scenario_count": 120,
+  "success_failure_counts": {
+    "ACO": {
+      "full_capacity": 60,
+      "invalid": 0,
+      "success": 300
+    },
+    "GA": {
+      "full_capacity": 60,
+      "invalid": 0,
+      "success": 300
+    },
+    "PSO": {
+      "full_capacity": 60,
+      "invalid": 0,
+      "success": 300
+    },
+    "exhaustive_optimum": {
+      "full_capacity": 60,
+      "invalid": 0,
+      "success": 300
+    },
+    "first_available": {
+      "full_capacity": 60,
+      "invalid": 0,
+      "success": 300
+    }
+  },
+  "successful_scenario_repetitions": 300,
+  "weights": {
+    "congestion": 0.3,
+    "distance": 0.35,
+    "fairness": 0.15,
+    "waiting": 0.2
+  }
+}

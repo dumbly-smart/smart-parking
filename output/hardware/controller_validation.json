@@ -1,0 +1,26 @@
+{
+  "provenance": "physical ESP32 serial events and local hardware API server access logs",
+  "controller_chip": "ESP32-D0WD-V3 revision 3.1",
+  "flash_size_bytes": 4194304,
+  "pre_flash_full_readback_bytes": 4194304,
+  "flash_image_hash_verified": true,
+  "controller_boot_events": 3,
+  "wifi_connected_events": 3,
+  "rfid_reader_spi_probes": [
+    {
+      "version_register": 255,
+      "ready": false,
+      "host_received_at_utc": "2026-10-20T18:54:34.909Z"
+    },
+    {
+      "version_register": 0,
+      "ready": false,
+      "host_received_at_utc": "2026-10-20T18:56:32.045Z"
+    }
+  ],
+  "health_200_responses_after_latest_boot": 5,
+  "authenticated_status_200_responses_after_latest_boot": 5,
+  "card_read_and_transactions": "NOT COMPLETED: no rfid_read event; reader VersionReg is not responding (0xFF and 0x00)",
+  "visual_led_oled_servo_power_camera_checks": "NOT TESTED",
+  "current_firmware_image_sha256": "9660b831073afae4fcfc0c979c16b09c66ff485a58ff65ff11b1dfab9f221f1d"
+}

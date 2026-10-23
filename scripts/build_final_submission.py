@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import hashlib
 import json
 import shutil
 import subprocess
@@ -20,6 +21,7 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Inches, Pt, RGBColor
+from PIL import Image, ImageOps
 
 REVIEW = Path("review_outputs/2026-10-15")
 DATASET_URL = "https://drive.google.com/file/d/1-bgCGNuCgbhWTbKyxnMlLpOQH1s3lxSZ/view?usp=drivesdk"
@@ -68,7 +70,7 @@ def _add_table(
     for index, text in enumerate(headers):
         cell = table.rows[0].cells[index]
         cell.text = text
-        _set_cell_shading(cell, "D9EAF5")
+        _set_cell_shading(cell, "F0F0F0")
         cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
         for paragraph in cell.paragraphs:
             for run in paragraph.runs:
@@ -127,7 +129,7 @@ def _add_hyperlink(paragraph: Any, text: str, url: str) -> None:
     run = OxmlElement("w:r")
     properties = OxmlElement("w:rPr")
     color = OxmlElement("w:color")
-    color.set(qn("w:val"), "0563C1")
+    color.set(qn("w:val"), "000000")
     properties.append(color)
     underline = OxmlElement("w:u")
     underline.set(qn("w:val"), "single")
@@ -183,10 +185,10 @@ def _style_document(document: Document) -> None:
     normal.paragraph_format.line_spacing = 1.08
     normal.paragraph_format.space_after = Pt(5)
     for style_name, size, color in (
-        ("Title", 22, "17365D"),
-        ("Heading 1", 15, "17365D"),
-        ("Heading 2", 12, "245A81"),
-        ("Heading 3", 10.5, "245A81"),
+        ("Title", 22, "000000"),
+        ("Heading 1", 15, "000000"),
+        ("Heading 2", 12, "000000"),
+        ("Heading 3", 10.5, "000000"),
     ):
         style = document.styles[style_name]
         style.font.name = "Times New Roman"
@@ -196,16 +198,20 @@ def _style_document(document: Document) -> None:
         style.paragraph_format.keep_with_next = True
         style.paragraph_format.space_before = Pt(9)
         style.paragraph_format.space_after = Pt(4)
+    title_properties = document.styles["Title"]._element.get_or_add_pPr()
+    for paragraph_border in title_properties.findall(qn("w:pBdr")):
+        title_properties.remove(paragraph_border)
     document.styles["Caption"].font.name = "Times New Roman"
     document.styles["Caption"].font.size = Pt(9)
     document.styles["Caption"].font.italic = True
+    document.styles["Caption"].font.color.rgb = RGBColor(0, 0, 0)
     header = section.header.paragraphs[0]
-    header.text = "FINAL PROJECT REVIEW  ·  15 OCTOBER 2026"
+    header.text = "FINAL PROJECT REPORT  ·  20 OCTOBER 2026"
     header.alignment = WD_ALIGN_PARAGRAPH.RIGHT
     for run in header.runs:
         run.font.name = "Times New Roman"
         run.font.size = Pt(8)
-        run.font.color.rgb = RGBColor(90, 100, 110)
+        run.font.color.rgb = RGBColor(0, 0, 0)
     _add_page_number(section.footer.paragraphs[0])
     section.first_page_header.paragraphs[0].clear()
     section.first_page_footer.paragraphs[0].clear()
@@ -271,7 +277,12 @@ def build_report(
     """Create a polished DOCX using only checked-in results and local diagrams."""
     repository_root = repository_root.resolve()
     output_directory.mkdir(parents=True, exist_ok=True)
-    figures = repository_root / REVIEW / "final_submission/figures"
+    source_figures = repository_root / REVIEW / "final_submission/figures"
+    figures = output_directory / "figures"
+    figures.mkdir(parents=True, exist_ok=True)
+    for source in source_figures.glob("*.png"):
+        with Image.open(source) as image:
+            ImageOps.grayscale(image).save(figures / source.name)
     metadata = json.loads(
         (repository_root / REVIEW / "dataset/dataset_metadata.json").read_text(encoding="utf-8")
     )
@@ -282,6 +293,18 @@ def build_report(
     )
     model_rows = _read_csv(repository_root / REVIEW / "ml_results/model_comparison.csv")
     models = {row["model"]: row for row in model_rows}
+    hardware_validation_path = repository_root / "output/hardware/controller_validation.json"
+    hardware_summary_path = repository_root / "output/hardware/hardware_summary.json"
+    hardware_validation = (
+        json.loads(hardware_validation_path.read_text(encoding="utf-8"))
+        if hardware_validation_path.exists()
+        else None
+    )
+    hardware_summary = (
+        json.loads(hardware_summary_path.read_text(encoding="utf-8"))
+        if hardware_summary_path.exists()
+        else None
+    )
     document = Document()
     _style_document(document)
 
@@ -299,29 +322,32 @@ def build_report(
     authors = document.add_paragraph()
     authors.alignment = WD_ALIGN_PARAGRAPH.CENTER
     authors.add_run(
-        "Akil Ansari A  ·  25BCE2777\nVellore Institute of Technology\nFinal project review · 15 October 2026"
+        "Akil\nRegistration number: 25BCE2777\nInstitution: [Enter institution]\n"
+        "Course: [Enter course]\nFaculty / guide: [Enter name]\nFinal project report · 20 October 2026"
     )
     authors.paragraph_format.space_before = Pt(28)
     document.add_page_break()
 
     _heading(document, "Abstract")
     abstract = (
-        "Parking systems need current occupancy, reliable entry and exit records, and a defensible method for assigning "
-        "available spaces. This work presents a five-slot smart-parking prototype that combines RFID lifecycle APIs, "
-        "camera-based occupancy processing, optimization-based allocation, short-horizon forecasting, and an operational "
-        "dashboard around a FastAPI and SQLite backend. Device firmware targets an ESP32 controller and an AI-Thinker "
-        "ESP32-CAM; a Python ingestion service forwards JPEG snapshots to the backend, while neural inference remains "
-        "server-side. Experimental evaluation uses a deterministic, explicitly synthetic 14-day timeline sampled every "
-        "five minutes (4,032 buckets and 27 input features). LSTM, GRU, and temporal Transformer models share a 12-step "
-        "lookback, a one-step forecast horizon, chronological 70/15/15 partitions, and training-only standardization. "
-        "On the untouched synthetic test split, GRU achieved MAE 0.098055 and RMSE 0.117862, compared with persistence "
-        "MAE 0.120875. In 120 allocation scenarios repeated with three seeds, GA and exhaustive enumeration had the same "
-        "mean objective cost (0.378194); PSO and ACO had mean optimality gaps of 0.048264 and 0.003586. These "
-        "measurements characterize the generated data and five-slot simulations only. Both firmware projects compile, "
-        "and a same-host software smoke test exercised the backend using simulated frames and RFID input. Physical RFID, "
-        "camera, display, LED, and gate behavior has not been verified. The report therefore distinguishes software and "
-        "simulation evidence from deployment performance and identifies real-data and supervised hardware testing as "
-        "necessary next steps."
+        "Parking guidance requires occupancy, reliable vehicle records, and a rule for choosing among "
+        "free spaces. This project presents a five-space smart-parking prototype integrating RFID session handling, camera "
+        "occupancy processing, slot allocation, short-horizon forecasting, and a browser dashboard. A FastAPI service and "
+        "SQLite database coordinate state. ESP32 controller firmware reads RFID tags and requests entry or exit decisions; "
+        "ESP32-CAM firmware serves JPEG captures to a Python ingestion process. Forecast models run on the server, keeping "
+        "neural inference outside the microcontrollers. Evaluation uses a synthetic timeline of 4,032 five-minute intervals "
+        "with 27 features. LSTM, GRU, and temporal Transformer regressors share a 12-step lookback, one-step horizon, "
+        "chronological 70/15/15 split, and training-only scaling. On the synthetic test partition, GRU obtains MAE 0.098055 "
+        "and RMSE 0.117862; persistence obtains MAE 0.120875 and RMSE 0.169173. The allocation study evaluates five policies "
+        "across 120 scenarios with three seeded repetitions. Exact enumeration and the genetic algorithm both achieve mean "
+        "objective cost 0.378194; PSO and ACO have mean optimality gaps 0.048264 and 0.003586. These values describe "
+        "generated observations and five-slot software simulations, not field performance. Automated tests cover lifecycle, "
+        "camera input, occupancy transitions, and prediction behavior; both firmware targets have compile evidence. "
+        "The user reports that the assembled tabletop hardware works; this qualitative report was not captured as a serial trial log. Earlier RC522 diagnostics recorded invalid SPI responses before that report. RFID success rates, camera accuracy, OLED/LED correctness, servo timing, and power remain without measured trials. The camera detector is an edge-density "
+        "heuristic requiring calibrated regions and real-scene validation. This report documents architecture, proposed wiring, "
+        "implementation, measurements, limitations, and bench procedures. The prototype demonstrates an auditable software "
+        "integration path; deployment conclusions require real data, occupancy labels, electrical checks, and supervised "
+        "hardware trials."
     )
     _paragraph(document, abstract)
     document.paragraphs[-1].paragraph_format.line_spacing = 1.15
@@ -343,7 +369,11 @@ def build_report(
     )
     _paragraph(
         document,
-        "The software contributions are (i) an idempotent API lifecycle and shared allocation objective, (ii) a privacy-conscious simulated time-series dataset and comparable neural forecasting experiment, (iii) a reproducible GA/PSO/ACO benchmark with deterministic and exact references, and (iv) a hardware integration path that fails closed when allocation cannot be confirmed. Hardware results remain unmeasured until the specified boards and circuit are physically assembled and tested.",
+        "The software contributions are (i) an idempotent API lifecycle and shared allocation objective, (ii) a privacy-conscious simulated time-series dataset and comparable neural forecasting experiment, (iii) a reproducible GA/PSO/ACO benchmark with deterministic and exact references, and (iv) a hardware integration path that fails closed when allocation cannot be confirmed. The user reports that the assembled tabletop hardware works. Since no post-rewire trial logs or quantitative measurements were captured, the report distinguishes that qualitative user report from measured results and provides only source/specification-based engineering estimates where defensible.",
+    )
+    _paragraph(
+        document,
+        "The Arduino framework on the ESP32 is suited to deterministic sensor polling and actuator control, while the host computer provides the memory and processing environment for training and running the neural regressors. This split keeps the microcontroller responsible for bounded I/O and authorization checks and leaves data-intensive inference on the server.",
     )
 
     _heading(document, "2. Literature Survey")
@@ -353,34 +383,34 @@ def build_report(
     )
     literature = [
         [
-            "Lin et al. [1]",
-            "2017 · IEEE Transactions on Intelligent Transportation Systems",
-            "Survey and taxonomy of smart-parking services, sensing, communications and deployment issues.",
-            "Broad architectural framing; it is a survey rather than a new benchmark. This project joins a small prototype backend to sensing and forecast APIs.",
+            "de Almeida et al. [14]",
+            "2022 · Expert Systems with Applications",
+            "Systematic review of public datasets and computer-vision methods for parking-lot management.",
+            "Finds dataset dependence and weak evaluation protocols; motivates explicit limits on this project's heuristic and absence of labeled field images.",
         ],
         [
-            "Tsiropoulou et al. [2]",
-            "2017 · Cyber-Physical Systems",
-            "Studies passive RFID tag-to-tag communication and joint routing/reader-power minimization in a parking context.",
-            "Focuses RFID coverage and power, not the present system's database-backed entry/exit lifecycle or physical gate validation.",
+            "Lee et al. [15]",
+            "2022 · Microprocessors and Microsystems",
+            "Reviews edge-enabled smart parking with emphasis on security, energy use, sensors, and communication.",
+            "Highlights security and energy considerations; this prototype's HTTP endpoints remain unauthenticated and its power is unmeasured.",
         ],
         [
-            "de Almeida et al. [3]",
-            "2015 · Expert Systems with Applications",
-            "Introduces PKLot: 695,899 labeled space images from two lots and three views; evaluates texture descriptors with SVM.",
-            "Reports strong same-view results and a cross-lot drop, exposing camera/view generalization risk. This project has no labeled real-camera evaluation set.",
+            "Feng et al. [16]",
+            "2022 · Complex & Intelligent Systems",
+            "Uses a dual ConvLSTM and dense convolution network for zone-wise availability prediction over public-lot data.",
+            "Models spatial relationships across lots and reports real-data experiments; the present five-slot regression uses synthetic data and no spatial graph.",
         ],
         [
-            "Yang et al. [4]",
-            "2019 · Transportation Research Part C",
-            "Combines graph convolution and recurrent LSTM with parking, traffic and weather inputs for block-level prediction 30 minutes ahead.",
-            "Uses real city data at a different scale/horizon. Its MAPE is not directly comparable with this project's five-minute synthetic regression MAE/RMSE.",
+            "Zhang et al. [17]",
+            "2024 · ISPRS International Journal of Geo-Information",
+            "Compares TCN and LSTM and proposes MAT-LSTM for parking-space availability using real and synthetic datasets.",
+            "Supports controlled comparisons across data sources; it does not validate the architectures or synthetic generator used in this project.",
         ],
         [
-            "Thomas and Kovoor [5]",
-            "2018 · Procedia Computer Science",
-            "Presents a genetic-algorithm approach to vehicle-to-bay scheduling for a smart vehicle parking prototype.",
-            "Motivates heuristic allocation; its scenario and objective differ from the shared four-term objective and exhaustive five-slot reference here.",
+            "Enríquez et al. [18]",
+            "2024 · Applied System Innovation",
+            "Studies AdaBoost parking prediction with real parking-flow data and simulated fog/cloud latency.",
+            "Shows the distinction between measured prediction and simulated network latency; this project reports server-side model timing only.",
         ],
     ]
     _add_table_caption(document, "Table 1. Related studies and their relevance to this project")
@@ -392,7 +422,7 @@ def build_report(
     )
     _paragraph(
         document,
-        "The recurrent units follow established sequence-model designs: LSTM [6] and gated recurrent units [7]. The temporal Transformer uses self-attention and feed-forward residual blocks following the attention architecture introduced by Vaswani et al. [8]. These sources define model families, not evidence that a model trained on this synthetic corpus will transfer to a physical parking site. The gap addressed here is an end-to-end, reproducible comparison with matched inputs and explicit simulation limitations, rather than a claim of a new state-of-the-art method.",
+        "Recent work emphasizes dataset-independent vision evaluation [14], security and energy concerns in edge deployments [15], spatial forecasting across zones [16], recurrent and convolutional model comparisons [17], and prediction with fog/cloud architectures [18]. Foundational model formulations used here are LSTM [6], GRU [7], and self-attention [8]. These publications define methods and identify evaluation needs; they do not validate this project's synthetic corpus or hardware. The gap addressed here is a small, reproducible integration with matched model inputs and explicit simulation limits, rather than a new state-of-the-art claim.",
     )
     _paragraph(
         document,
@@ -525,7 +555,7 @@ def build_report(
     )
     _paragraph(
         document,
-        "The bill of materials, full per-signal CSV pin map, wiring sequence, calibration notes and troubleshooting table are included in final_submission/hardware/ and docs/hardware/validation.md. The complete hardware validation status is NOT TESTED on physical boards.",
+        "The bill of materials, full per-signal CSV pin map, wiring sequence, calibration notes and troubleshooting table are included in final_submission/hardware/ and docs/hardware/validation.md. The user reports successful operation of the assembled tabletop rig; quantitative per-component validation remains uncaptured.",
     )
 
     _heading(document, "6. Software and Machine-Learning Design")
@@ -639,7 +669,7 @@ def build_report(
     )
     _paragraph(
         document,
-        "The host's development environment provides an Intel Core i7-14650HX with 24 CPUs online and 15 GiB RAM; benchmark latencies are software measurements from this machine and vary with system load. During the integration check, the host exposed a generic CH340 USB serial adapter at /dev/ttyUSB0, but the attached target board could not be identified from the host. No private controller configuration was present, and esp32-cam.local was not resolved from the test host. The adapter alone does not establish that the controller or any peripheral is connected or functioning; no physical behavior is claimed.",
+        "The host's development environment provides an Intel Core i7-14650HX with 24 CPUs online and 15 GiB RAM; benchmark latencies are software measurements from this machine and vary with system load. During an earlier integration check, the host exposed a generic CH340 USB serial adapter at /dev/ttyUSB0, but the attached target board could not then be identified from the host. No private controller configuration was present, and esp32-cam.local was not resolved at that time. Later work identified and flashed an ESP32 controller; the user subsequently reported that the assembled tabletop rig works. These historical host observations are not post-rewire peripheral measurements.",
     )
 
     _heading(document, "9. Results and Discussion")
@@ -753,9 +783,78 @@ def build_report(
     )
 
     _heading(document, "9.3 Hardware and integration test status", 2)
+    if hardware_validation:
+        reader_versions = ", ".join(
+            f"0x{item['version_register']:02X}"
+            for item in hardware_validation.get("rfid_reader_spi_probes", [])
+            if isinstance(item.get("version_register"), int)
+        ) or "no reader probe captured"
+        heap_metric = (
+            hardware_summary.get("metrics", {}).get("free_heap_bytes", {})
+            if hardware_summary
+            else {}
+        )
+        heap_result = (
+            f" Free heap across {heap_metric['count']} physical serial events averaged "
+            f"{heap_metric['mean']:.0f} bytes (median {heap_metric['median']:.0f}, "
+            f"sample standard deviation {heap_metric['standard_deviation']:.0f}, "
+            f"p95 {heap_metric['p95']:.0f})."
+            if heap_metric.get("status") == "MEASURED"
+            else " Controller free-heap measurement is NOT TESTED."
+        )
+        hardware_status_paragraph = (
+            f"PlatformIO compiled both firmware targets. A read-only probe identified "
+            f"the controller as {hardware_validation.get('controller_chip', 'an ESP32')}; "
+            f"its {hardware_validation.get('flash_size_bytes', 0):,}-byte flash was backed "
+            f"up before the upload, and esptool verified the flashed image hash. Serial "
+            f"telemetry recorded {hardware_validation.get('controller_boot_events', 0)} boots "
+            f"and {hardware_validation.get('wifi_connected_events', 0)} Wi-Fi connections. "
+            f"The local API access log recorded "
+            f"{hardware_validation.get('health_200_responses_after_latest_boot', 0)} successful "
+            f"health checks and {hardware_validation.get('authenticated_status_200_responses_after_latest_boot', 0)} "
+            f"authenticated parking-status responses from the ESP32 after its latest boot."
+            f"{heap_result} The RC522 VersionReg probes returned {reader_versions} during "
+            f"the earlier wiring attempt. The user subsequently reports that the rewired "
+            f"tabletop rig works, but no post-rewire serial capture, trial count, or "
+            f"quantitative result was supplied; this remains a user-reported functional "
+            f"check rather than independently captured evidence. No camera health endpoint "
+            f"was found during the earlier LAN scan. RFID success rate, camera accuracy, "
+            f"OLED/LED correctness, current draw, and physical servo timing remain without "
+            f"measured trials. The occupancy API "
+            f"has software tests with generated images and status-transition assertions, "
+            f"not a labeled real-camera set."
+        )
+        controller_build_result = (
+            f"PASS: compiled and flashed to {hardware_validation.get('controller_chip', 'ESP32')}; "
+            "esptool hash verification passed and a full flash readback was saved before update."
+        )
+        controller_network_result = (
+            f"PASS: {hardware_validation.get('wifi_connected_events', 0)} Wi-Fi connection "
+            f"events; {hardware_validation.get('authenticated_status_200_responses_after_latest_boot', 0)} "
+            "authenticated status responses returned HTTP 200."
+        )
+        reader_result = (
+            f"Earlier probe: invalid VersionReg values {reader_versions}. The user later "
+            "reported successful operation after rewiring; no post-rewire card-read log "
+            "or repeated-trial count was captured. Qualitative user report only."
+        )
+        camera_network_result = "NOT TESTED: camera board or /health endpoint was not found on LAN."
+    else:
+        hardware_status_paragraph = (
+            "PlatformIO compiled the controller and AI-Thinker ESP32-CAM firmware. "
+            "There is no physical controller validation evidence in the repository; "
+            "no physical controller validation evidence is available. RFID, camera, "
+            "display, LEDs, servo, current, and hardware latency remain NOT TESTED. "
+            "The occupancy API has software tests with generated images and status-transition "
+            "assertions, not a labeled real-camera set."
+        )
+        controller_build_result = "PASS: PlatformIO compilation only; no physical flash evidence."
+        controller_network_result = "NOT TESTED: no physical controller network evidence."
+        reader_result = "NOT TESTED physically; no reader probe or card read was recorded."
+        camera_network_result = "NOT TESTED: no camera health endpoint was verified."
     _paragraph(
         document,
-        "PlatformIO successfully compiled the controller for esp32dev and the camera for AI Thinker ESP32-CAM. The controller image used 27,220 bytes of RAM (8.3% of 327,680) and 474,549 bytes of flash (36.2% of 1,310,720); the camera image used 49,628 bytes of RAM (15.1% of 327,680) and 836,777 bytes of flash (26.6% of 3,145,728). A generic CH340 USB serial adapter was visible as /dev/ttyUSB0, but the target could not be identified and neither the controller nor camera was verified on the network. Consequently no measured RF range, camera frame rate, servo angle accuracy, OLED readability, current draw, energy use, gate cycle timing under load, hardware API latency, or physical occupancy accuracy is available. The occupancy API has software tests with generated images and status-transition assertions, not a labeled real-camera set.",
+        hardware_status_paragraph,
     )
     _add_table_caption(document, "Table 8. Verification evidence and physical test status")
     _add_table(
@@ -764,7 +863,7 @@ def build_report(
         [
             [
                 "Controller firmware build",
-                "PASS: PlatformIO compilation for esp32dev; no flashing or board execution claimed.",
+                controller_build_result,
             ],
             [
                 "ESP32-CAM firmware build",
@@ -772,11 +871,15 @@ def build_report(
             ],
             [
                 "USB serial/network reachability",
-                "Generic CH340 adapter detected; board identity unknown. esp32-cam.local not resolved from test host.",
+                controller_network_result,
             ],
             [
-                "RFID, OLED, LEDs, servo, real camera",
-                "NOT TESTED physically; no component-level behavior or electrical measurements are available.",
+                "RC522 reader and card scan",
+                reader_result,
+            ],
+            [
+                "OLED, LEDs, servo, physical camera",
+                f"The user reports that the assembled rig works; no post-rewire per-component captures or trial counts are available. {camera_network_result}",
             ],
             [
                 "Vision accuracy",
@@ -789,10 +892,108 @@ def build_report(
         ],
     )
 
-    _heading(document, "10. Testing and Demonstration")
+    _heading(document, "9.4 Source- and specification-based engineering estimates", 2)
     _paragraph(
         document,
-        "Automated software coverage includes backend lifecycle retries/conflicts, no-free-slot behavior, JPEG input validation, ROI bounds, confidence smoothing, state persistence, prediction fallback/artifact compatibility, simulated demo API ordering, and the new camera-ingestion and ROI-geometry tests. The build checklist distinguishes those results from firmware compilation and physical tests. The hardware scenario checklist marks all physical behaviors NOT TESTED until the board-level procedures are performed.",
+        "The following are rough engineering planning estimates, not hardware measurements or simulated benchmark outputs. Rate and latency ranges are low-confidence analyst assumptions for a close-range tabletop setup on stable local Wi-Fi. Component timing and current ranges use firmware constants and manufacturer specifications where available. Replace these with recorded trials before drawing performance conclusions. Camera accuracy has no defensible estimate without labeled images.",
+    )
+    _add_table_caption(document, "Table 9. Rough engineering estimates (not measured)")
+    _add_table(
+        document,
+        ["Quantity", "Estimate", "Basis and limitations"],
+        [
+            [
+                "RFID successful reads per close, aligned tap",
+                "90–99% (very low confidence)",
+                "Assumes a supported tag within about 20 mm, stable 3.3 V, and no nearby metal. MFRC522 specifies up to 50 mm depending on antenna tuning; that is not a success-rate guarantee [20].",
+            ],
+            [
+                "API entry/exit transaction success on stable local LAN",
+                "98–99.5% (very low confidence)",
+                "Planning assumption for a reachable backend and healthy Wi-Fi. Retries are idempotent, but no post-rewire transaction trial series was captured.",
+            ],
+            [
+                "Camera capture success on stable power/Wi-Fi",
+                "95–99% (very low confidence)",
+                "Planning assumption only; no physical ESP32-CAM capture series or dropped-frame count is available.",
+            ],
+            [
+                "LED correctness with known slot state",
+                "95–100% (very low confidence)",
+                "Assumes correct pin mapping/polarity and a successful status refresh. No per-slot expected-versus-observed trial table is available.",
+            ],
+            [
+                "Entry or exit latency, tag detection to accepted API response",
+                "0.2–1.0 s (low confidence)",
+                "Order-of-magnitude estimate for one local-Wi-Fi request and SQLite transaction with the server healthy. The 3.5 s HTTP timeout is a failure limit, not expected latency.",
+            ],
+            [
+                "Wi-Fi recovery after AP becomes available",
+                "5–15 s (low confidence)",
+                "Firmware retries every 5 s; range allows up to about 10 s for association/DHCP after a retry. Poor AP conditions may take longer or fail.",
+            ],
+            [
+                "Servo command delay, RFID detection to authorized GPIO command",
+                "0.2–1.0 s (low confidence)",
+                "Uses the assumed local API round trip; firmware issues the command only after authorization. Excludes mechanical travel.",
+            ],
+            [
+                "SG90 travel for configured 10°→85° sweep",
+                "0.13–0.50 s (very low confidence)",
+                "Ideal nominal is 75° × 0.1 s/60° ≈125 ms at 4.8 V; upper range is a load/settling allowance. Exact servo variant is unverified [19].",
+            ],
+            [
+                "OV2640 frame capture latency, configured JPEG mode",
+                "0.10–0.50 s (very low confidence)",
+                "Planning range for one SVGA-class JPEG frame with PSRAM. Exposure, frame size, clone, and lighting affect timing; no physical capture log is available.",
+            ],
+            [
+                "Backend five-ROI heuristic processing latency",
+                "0.01–0.10 s (very low confidence)",
+                "Planning range for one frame and five ROIs on the local host; excludes capture, transfer, and queue delay. Not measured on a physical frame.",
+            ],
+            [
+                "Controller free heap",
+                "Measured historical mean 274,069 bytes (n=8)",
+                "Captured physical serial telemetry before the user's later hardware report; median 292,240 bytes, SD 26,019 bytes, p95 293,416 bytes. This is measured, not an estimate or future guarantee.",
+            ],
+            [
+                "Controller + reader + OLED + LEDs input current, servo excluded",
+                "0.15–0.40 A at 5 V (very low confidence)",
+                "Budget estimate from ESP32 active Wi-Fi radio draw plus peripherals; regulators, OLED brightness, LED current, and network duty cycle vary [21].",
+            ],
+            [
+                "AI-Thinker ESP32-CAM input current",
+                "About 0.18 A at 5 V; up to 0.31 A with flash at maximum",
+                "Ai-Thinker module specification; not measured on this camera board [22].",
+            ],
+            [
+                "SG90 servo supply current",
+                "0.5–2.0 A (very low confidence)",
+                "Manufacturer product page notes this operating-current range; exact unit/load is unknown. Use a separate regulated servo supply, never ESP32 GPIO or 3.3 V [19].",
+            ],
+            [
+                "Camera occupancy accuracy",
+                "Not estimated",
+                "Requires a manually labeled real-scene test set. Synthetic frames cannot support an accuracy percentage.",
+            ],
+        ],
+    )
+
+    _heading(document, "10. Testing and Demonstration")
+    physical_checklist_note = (
+        "The hardware checklist records the controller boot, Wi-Fi, and authenticated "
+        "status API evidence separately from the earlier invalid RC522 SPI probes. The user later "
+        "reported successful operation after rewiring, but no post-rewire per-component logs, "
+        "trial counts, or power measurements were captured."
+        if hardware_validation
+        else "The hardware scenario checklist marks physical behaviors NOT TESTED until "
+        "the board-level procedures are performed."
+    )
+    _paragraph(
+        document,
+        "Automated software coverage includes backend lifecycle retries/conflicts, no-free-slot behavior, JPEG input validation, ROI bounds, confidence smoothing, state persistence, prediction fallback/artifact compatibility, simulated demo API ordering, and the new camera-ingestion and ROI-geometry tests. The build checklist distinguishes those results from firmware compilation and physical tests. "
+        + physical_checklist_note,
     )
     _paragraph(
         document,
@@ -814,7 +1015,7 @@ def build_report(
     _heading(document, "11. Limitations and Future Work")
     _paragraph(
         document,
-        "Primary limitations are the synthetic dataset, five-space scale, one-step horizon, generator-specific correlations, edge-density camera heuristic, absent labeled real imagery, absence of physical hardware evidence, and nonauthenticated HTTP control API. The architecture assumes a fixed camera and calibrated static ROIs. Lighting, weather, vehicle type, partial occlusion, perspective, shadows and camera motion may invalidate the baseline detector. Prediction accuracy on synthetic samples cannot establish field generalization.",
+        "Primary limitations are the synthetic dataset, five-space scale, one-step horizon, generator-specific correlations, edge-density camera heuristic, absent labeled real imagery, lack of post-rewire quantitative hardware logs, and nonauthenticated HTTP control API. The user reports that the assembled tabletop rig works, but the available serial evidence predates that report. The architecture assumes a fixed camera and calibrated static ROIs. Lighting, weather, vehicle type, partial occlusion, perspective, shadows and camera motion may invalidate the baseline detector. Prediction accuracy on synthetic samples cannot establish field generalization.",
     )
     _paragraph(
         document,
@@ -824,7 +1025,7 @@ def build_report(
     _heading(document, "12. Conclusion")
     _paragraph(
         document,
-        "The repository provides a reproducible software smart-parking prototype with lifecycle, occupancy, allocation, forecasting, dashboard, synthetic experiment outputs, and new ESP32 controller/camera firmware plus a camera ingestion and ROI calibration path. The measured synthetic experiment ranks GRU lowest in test MAE among the tested predictors, while exhaustive enumeration is an efficient exact reference for five-slot allocation. These results demonstrate functioning software and an experimental workflow, not deployment performance. Firmware compiles for the selected targets; hardware mapping remains proposed, and physical camera, RFID, display, LED and servo behavior remains unverified. The report and final submission materials preserve these distinctions.",
+        "The repository provides a reproducible software smart-parking prototype with lifecycle, occupancy, allocation, forecasting, dashboard, synthetic experiment outputs, and ESP32 controller/camera firmware plus camera ingestion and ROI calibration. The measured synthetic experiment ranks GRU lowest in test MAE among the tested predictors, while exhaustive enumeration is an efficient exact reference for five-slot allocation. These results demonstrate functioning software and an experimental workflow, not deployment performance. The user reports successful operation of the assembled tabletop hardware. Earlier serial probes predate that report, and quantitative post-rewire RFID, camera, display, LED, servo, power, and latency trials were not captured. The report separates this user-reported function from measured results and source/specification-based estimates.",
     )
 
     _heading(document, "References")
@@ -842,6 +1043,15 @@ def build_report(
         "[11] Smart Parking System repository, implementation and experimental outputs. https://github.com/dumbly-smart/smart-parking (accessed 14 Oct. 2026).",
         "[12] J. Kennedy and R. Eberhart, “Particle swarm optimization,” in Proceedings of IEEE International Conference on Neural Networks, vol. 4, 1995, pp. 1942–1948. doi: 10.1109/ICNN.1995.488968.",
         "[13] M. Dorigo, V. Maniezzo, and A. Colorni, “Ant System: Optimization by a Colony of Cooperating Agents,” IEEE Transactions on Systems, Man, and Cybernetics, Part B, vol. 26, no. 1, pp. 29–41, 1996. doi: 10.1109/3477.484436.",
+        "[14] P. R. L. de Almeida, J. H. Alves, R. S. Parpinelli, and J. P. Barddal, “A systematic review on computer vision-based parking lot management applied on public datasets,” Expert Systems with Applications, vol. 198, article 116731, 2022. doi: 10.1016/j.eswa.2022.116731.",
+        "[15] C. P. Lee, F. T. J. Leng, R. A. A. Habeeb, M. A. Amanullah, and M. H. ur Rehman, “Edge computing-enabled secure and energy-efficient smart parking: A review,” Microprocessors and Microsystems, vol. 93, article 104612, 2022. doi: 10.1016/j.micpro.2022.104612.",
+        "[16] Y. Feng, Y. Xu, Q. Hu, S. Krishnamoorthy, and Z. Tang, “Predicting vacant parking space availability zone-wisely: A hybrid deep learning approach,” Complex & Intelligent Systems, vol. 8, pp. 4145–4161, 2022. doi: 10.1007/s40747-022-00700-1.",
+        "[17] F. Zhang, K. Shang, L. Yan, H. Nan, and Z. Miao, “Prediction of Parking Space Availability Using Improved MAT-LSTM Network,” ISPRS International Journal of Geo-Information, vol. 13, no. 5, article 151, 2024. doi: 10.3390/ijgi13050151.",
+        "[18] F. J. Enríquez, J.-M. Mejía-Muñoz, G. Bravo, and O. Cruz-Mejía, “Smart Parking: Enhancing Urban Mobility with Fog Computing and Machine Learning-Based Parking Occupancy Prediction,” Applied System Innovation, vol. 7, no. 3, article 52, 2024. doi: 10.3390/asi7030052.",
+        "[19] TowerPro, “SG90 Digital,” manufacturer specifications, operating speed 0.1 s/60° at 4.8 V. https://towerpro.com.tw/product/sg90-7/ (accessed 21 Oct. 2026).",
+        "[20] NXP Semiconductors, “MFRC522 Standard performance MIFARE and NTAG frontend,” Rev. 3.9, 2016. Typical read/write distance up to 50 mm depending on antenna size and tuning. https://www.nxp.com/docs/en/data-sheet/MFRC522.pdf (accessed 21 Oct. 2026).",
+        "[21] Espressif Systems, “ESP32 Series Datasheet,” v5.3, Wi-Fi active-mode current. https://documentation.espressif.com/esp32_datasheet_en.html (accessed 21 Oct. 2026).",
+        "[22] Shenzhen Ai-Thinker Technology, “ESP32-CAM Wi-Fi+BT SoC Module Product Specification,” v1.0, 2017. https://d229kd5ey79jzj.cloudfront.net/1205/ESP32-CAM%20Product%20Specification.pdf (accessed 21 Oct. 2026).",
     ]
     for reference in references:
         paragraph = document.add_paragraph(reference)
@@ -864,6 +1074,41 @@ def build_report(
 
     report_path = output_directory / "Smart_Parking_Final_Report.docx"
     document.save(report_path)
+    evidence_directory = output_directory / "evidence"
+    evidence_directory.mkdir(parents=True, exist_ok=True)
+    evidence_files = (
+        "dataset/dataset_metadata.json",
+        "ml_results/model_comparison.csv",
+        "ml_results/model_comparison.json",
+        "optimization_results/optimizer_comparison.csv",
+        "optimization_results/optimizer_summary.json",
+        "optimization_results/benchmark_runs.csv",
+    )
+    evidence_hashes: dict[str, dict[str, str]] = {}
+    for relative_path in evidence_files:
+        source_path = repository_root / REVIEW / relative_path
+        target_path = evidence_directory / Path(relative_path).name
+        shutil.copy2(source_path, target_path)
+        evidence_hashes[target_path.name] = {
+            "source": str(Path(REVIEW) / relative_path),
+            "sha256": hashlib.sha256(target_path.read_bytes()).hexdigest(),
+        }
+    (evidence_directory / "provenance.json").write_text(
+        json.dumps(
+            {
+                "generated_by": "scripts/build_final_submission.py",
+                "note": "Metric and metadata files are copied verbatim from the current checkout; the dataset download URL in the report is pinned to commit 5b480d1.",
+                "files": evidence_hashes,
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    for filename in ("README.md", "SUBMISSION_CHECKLIST.md", "REFERENCES_VERIFIED.md"):
+        source_path = repository_root / REVIEW / "final_submission" / filename
+        shutil.copy2(source_path, output_directory / filename)
     if convert_pdf:
         _convert_to_pdf(report_path, output_directory)
     return report_path
@@ -899,7 +1144,7 @@ def _convert_to_pdf(docx_path: Path, output_directory: Path) -> Path:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repository-root", type=Path, default=Path.cwd())
-    parser.add_argument("--output-directory", type=Path, default=REVIEW / "final_submission")
+    parser.add_argument("--output-directory", type=Path, default=Path("output/final_submission"))
     parser.add_argument("--docx-only", action="store_true")
     args = parser.parse_args()
     path = build_report(args.repository_root, args.output_directory, convert_pdf=not args.docx_only)

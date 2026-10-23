@@ -51,6 +51,34 @@ Parking status still refreshes every 1.5 seconds for reconciliation and camera
 occupancy changes; insight panels refresh every 10 seconds. Gate reports reflect
 servo commands, since the controller has no physical position sensor.
 
+## Physical hardware integration
+
+The controller targets the ESP32 DevKit and drives the RC522, SSD1306, five
+slot LEDs, and a supervised tabletop SG90. The AI-Thinker ESP32-CAM serves
+bounded JPEG captures; the Python poller forwards validated frames to the
+existing occupancy API. Firmware source, private LAN setup, API behavior,
+power constraints, and the remaining physical checks are documented in
+[`docs/hardware/firmware.md`](docs/hardware/firmware.md). The proposed pin map,
+editable black-and-white circuit and wiring diagrams, A4 PDF exports, and BOM
+are in [`docs/hardware/`](docs/hardware/diagrams.md).
+
+Hardware serial and operator observations can be captured and summarized using
+[`docs/hardware/measurement_procedure.md`](docs/hardware/measurement_procedure.md).
+For example, capture controller metrics with:
+
+```bash
+python -m pip install -e '.[hardware]'
+python -m scripts.hardware_evaluation capture \
+  --port /dev/ttyUSB0 --output output/hardware/controller.jsonl
+```
+
+These logs contain no RFID UID, image, or credential values. A local config and
+a backend address reachable on a trusted LAN are required. The optional
+bearer-token check protects `/api/*` on the configured hardware service; traffic
+is plain HTTP, so keep it on a private network. Firmware compilation
+does not establish that a board was flashed or that the wiring is physically
+working.
+
 The editable model source is `scripts/build_parking_assets.mjs`. To rebuild
 `backend/app/static/models/parking-lot.glb` and `sedan.glb`, run `npm install`
 then `npm run build:assets`. The exported GLB files are served with the app;

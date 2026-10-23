@@ -1,0 +1,9 @@
+event,host_received_at_utc,uptime_ms,operation,success,latency_ms,http_status,slot_id,gate,expected,observed,free_heap_bytes,capture_bytes,capture_latency_ms,jpeg_bytes,sent_bytes,reason,current_ma,raw_json
+controller_boot,2026-10-20T18:49:05.432Z,124,,,,,,,,,293280,,,,,,,"{""event"": ""controller_boot"", ""free_heap_bytes"": 293280, ""host_received_at_utc"": ""2026-10-20T18:49:05.432Z"", ""uptime_ms"": 124}"
+wifi_connected,2026-10-20T18:49:14.865Z,9557,,,,,,,,,242532,,,,,,,"{""event"": ""wifi_connected"", ""free_heap_bytes"": 242532, ""host_received_at_utc"": ""2026-10-20T18:49:14.865Z"", ""uptime_ms"": 9557}"
+rfid_reader,2026-10-20T18:54:34.909Z,223,,,,,,,,,293416,,,,,,,"{""event"": ""rfid_reader"", ""free_heap_bytes"": 293416, ""host_received_at_utc"": ""2026-10-20T18:54:34.909Z"", ""ready"": false, ""uptime_ms"": 223, ""version_register"": 255}"
+controller_boot,2026-10-20T18:54:34.915Z,226,,,,,,,,,292240,,,,,,,"{""event"": ""controller_boot"", ""free_heap_bytes"": 292240, ""host_received_at_utc"": ""2026-10-20T18:54:34.915Z"", ""uptime_ms"": 226}"
+wifi_connected,2026-10-20T18:54:36.335Z,1651,,,,,,,,,242716,,,,,,,"{""event"": ""wifi_connected"", ""free_heap_bytes"": 242716, ""host_received_at_utc"": ""2026-10-20T18:54:36.335Z"", ""uptime_ms"": 1651}"
+rfid_reader,2026-10-20T18:56:32.045Z,123,,,,,,,,,293416,,,,,,,"{""event"": ""rfid_reader"", ""free_heap_bytes"": 293416, ""host_received_at_utc"": ""2026-10-20T18:56:32.045Z"", ""ready"": false, ""uptime_ms"": 123, ""version_register"": 0}"
+controller_boot,2026-10-20T18:56:32.053Z,126,,,,,,,,,292240,,,,,,,"{""event"": ""controller_boot"", ""free_heap_bytes"": 292240, ""host_received_at_utc"": ""2026-10-20T18:56:32.053Z"", ""uptime_ms"": 126}"
+wifi_connected,2026-10-20T18:56:41.361Z,9444,,,,,,,,,242712,,,,,,,"{""event"": ""wifi_connected"", ""free_heap_bytes"": 242712, ""host_received_at_utc"": ""2026-10-20T18:56:41.361Z"", ""uptime_ms"": 9444}"

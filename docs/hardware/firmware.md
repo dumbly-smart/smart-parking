@@ -7,7 +7,9 @@ and an AI-Thinker ESP32-CAM (`esp32cam`). The physical board labels remain to
 be confirmed. Firmware defaults have empty Wi-Fi credentials; no secret is
 checked in. Copy each `include/local_config.example.h` to `include/local_config.h`
 and enter local Wi-Fi credentials and the server's private LAN address. The
-local files are ignored by Git.
+local files are ignored by Git. This workstation currently has private, mode-0600
+local configs populated from its active Wi-Fi profile; those values are not part
+of the repository.
 
 Host compilation was verified with PlatformIO on 14 October 2026. The controller
 image used 27,220 bytes RAM and 474,549 bytes flash; the AI-Thinker camera image
@@ -23,11 +25,20 @@ pio run -d firmware/esp32_cam
 pio device monitor -d firmware/esp32_controller -b 115200
 ```
 
-Keep the FastAPI service on a trusted local network. The existing API has no
-device authentication or TLS configuration, so do not publish it to the
-internet or use an untrusted Wi-Fi network. The controller sends RFID UIDs in
-the API request body, does not print them, and should be used only on an
-isolated prototype network.
+The hardware API is run as a user systemd service at `10.42.115.131:8001`,
+bound only to the current Wi-Fi interface. It shares the default SQLite database
+with the development dashboard on `127.0.0.1:8000`. A local random bearer token
+protects `/api/*`; `/health` remains public. The ignored controller config and
+`output/hardware/device-api.env` hold the token with mode 0600. The camera poller
+reads `SMART_PARKING_DEVICE_API_TOKEN` and sends the token only to the backend.
+For a new machine, configure a new token in the server environment and
+`DEVICE_API_TOKEN` in controller `local_config.h`; never commit either value.
+
+The API uses HTTP, not TLS. Keep the service on a trusted private network and
+do not publish it to the internet or use untrusted Wi-Fi. The controller sends
+RFID UIDs in the API request body, does not print them, and should be used only
+on an isolated prototype network. The current Wi-Fi address can change; update
+the controller URL and user service bind address together if it does.
 
 ## Controller flow
 
@@ -57,10 +68,12 @@ backpressure, JPEG validation, and the existing multipart API contract.
 ```bash
 python -m scripts.camera_ingest \
   --camera-url http://CAMERA-IP/capture \
-  --backend-url http://SERVER-LAN-IP:8000 \
+  --backend-url http://SERVER-LAN-IP:8001 \
   --interval-seconds 5
 ```
 
-Use `--once` for a single-frame smoke test. The ingest process allows one
+Load the local token into the shell environment before starting the poller; it
+will attach bearer authorization only to backend requests. Use `--once` for a
+single-frame smoke test. The ingest process allows one
 in-flight request and exponentially backs off on errors up to 60 seconds.
 Clean shutdown is via Ctrl-C or SIGTERM.

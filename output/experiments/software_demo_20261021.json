@@ -1,0 +1,45 @@
+{
+  "captured_at_utc": "2026-10-20T19:09:35.989728+00:00",
+  "entry_and_dashboard_summary": {
+    "camera_frames": 3,
+    "entry_slot": "S3",
+    "forecast": {
+      "fallback_reason": "insufficient_history",
+      "model": "baseline",
+      "occupancy_ratio": 0.0,
+      "target_at": "2026-10-20T19:10:00Z"
+    },
+    "occupancy": {
+      "occupied": 2,
+      "total": 5
+    },
+    "optimizer_results": [
+      {
+        "algorithm": "ga",
+        "best_cost": 0.24499999999999997,
+        "chosen_slot_id": 4,
+        "runtime_ms": 0.9828839974943548
+      },
+      {
+        "algorithm": "pso",
+        "best_cost": 0.24499999999999997,
+        "chosen_slot_id": 4,
+        "runtime_ms": 1.4394450008694548
+      },
+      {
+        "algorithm": "aco",
+        "best_cost": 0.24499999999999997,
+        "chosen_slot_id": 4,
+        "runtime_ms": 1.3314370007719845
+      }
+    ]
+  },
+  "exit_summary": {
+    "gate_action": "open",
+    "session_id": 15,
+    "slot_id": 3,
+    "slot_name": "S3"
+  },
+  "provenance": "software simulation against local FastAPI demo instance; synthetic RFID identifier and generated JPEG frames; not a physical hardware measurement",
+  "workflow": "synthetic camera frames -> API occupancy processing -> entry -> allocation benchmark -> prediction -> exit"
+}

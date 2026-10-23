@@ -5,6 +5,7 @@
 static constexpr char WIFI_SSID[] = "";
 static constexpr char WIFI_PASSWORD[] = "";
 static constexpr char BACKEND_BASE_URL[] = "http://192.168.1.10:8000";
+static constexpr char DEVICE_API_TOKEN[] = "";
 
 static constexpr int SERVO_CLOSED_DEGREES = 10;
 static constexpr int SERVO_OPEN_DEGREES = 85;

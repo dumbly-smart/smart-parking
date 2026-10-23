@@ -124,6 +124,8 @@ def test_camera_api_input_error_does_not_change_persistence_or_smoothing(
         second = post_image(client, jpeg)
 
     assert first.json()["slots"][0]["consecutive_frames"] == 1
+    assert float(first.headers["X-Camera-Processing-Ms"]) >= 0
+    assert "camera_process;dur=" in first.headers["Server-Timing"]
     assert invalid.status_code == 400
     assert invalid.json()["detail"]["code"] == "invalid_image"
     assert second.json()["slots"][0]["consecutive_frames"] == 2

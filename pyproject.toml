@@ -26,6 +26,7 @@ dev = [
 ]
 ml = ["tensorflow>=2.20,<3", "matplotlib>=3.10,<4"]
 review = ["python-docx>=1.1,<2"]
+hardware = ["pyserial>=3.5,<4"]
 
 [tool.setuptools.packages.find]
 include = ["backend*", "optimization*", "prediction*", "vision*"]

@@ -58,7 +58,9 @@ def record_hardware_event(payload: HardwareEventRequest, request: Request) -> di
             payload.event_type, payload.operation, payload.operation_key, payload.rfid_uid
         )
     except ParkingConflict as exc:
-        raise HTTPException(status_code=409, detail={"code": exc.code, "message": exc.message}) from exc
+        raise HTTPException(
+            status_code=409, detail={"code": exc.code, "message": exc.message}
+        ) from exc
 
 
 @router.get("/api/parking/events/stream")
@@ -73,9 +75,14 @@ async def parking_event_stream(request: Request, since_id: int = 0) -> Streaming
             if batch:
                 for event in batch:
                     cursor = int(event["id"])
-                    yield f"id: {cursor}\nevent: parking\ndata: {json.dumps(event)}\n\n"
+                    public_event = {key: value for key, value in event.items() if key != "rfid_uid"}
+                    yield f"id: {cursor}\nevent: parking\ndata: {json.dumps(public_event)}\n\n"
             else:
                 yield ": heartbeat\n\n"
                 await asyncio.sleep(1)
 
-    return StreamingResponse(events(), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+    return StreamingResponse(
+        events(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )

@@ -5,7 +5,15 @@ from pathlib import Path
 from typing import Literal
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    PrivateAttr,
+    SecretStr,
+    field_validator,
+    model_validator,
+)
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from vision.models import RoiConfig
@@ -89,6 +97,7 @@ class Settings(BaseSettings):
     selected_predictor: Literal["baseline", "lstm", "gru", "transformer"] = "baseline"
     prediction_artifact_directory: Path = Path("artifacts/prediction")
     hardware_enabled: bool = False
+    device_api_token: SecretStr | None = None
     _parking: ParkingConfig = PrivateAttr()
     _roi: RoiConfig = PrivateAttr()
 

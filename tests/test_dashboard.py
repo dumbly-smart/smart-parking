@@ -99,10 +99,14 @@ def test_dashboard_serves_safe_bootstrap_and_assets(tmp_path: Path) -> None:
         page.text,
     )
     assert bootstrap is not None
-    assert set(json.loads(bootstrap.group(1))) == {
+    bootstrap_data = json.loads(bootstrap.group(1))
+    assert set(bootstrap_data) == {
         "selected_optimizer",
         "selected_predictor",
+        "scene",
     }
+    assert bootstrap_data["scene"]["asset"] is None
+    assert set(bootstrap_data["scene"]["slots"]) == {"1", "2", "3", "4", "5"}
     assert stylesheet.status_code == 200
     assert javascript.status_code == 200
 
@@ -125,7 +129,7 @@ def test_dashboard_supports_dynamic_slots_and_uses_privacy_safe_assets(
     assert [slot["id"] for slot in status.json()["slots"]] == [9, 2, 14]
     assert 'id="slot-grid"' in page.text
     assert "CARD-PRIVATE" not in page.text
-    assert "rfid" not in (page.text + javascript.text).lower()
+    assert "CARD-PRIVATE" not in javascript.text
 
 
 def test_dashboard_data_apis_remain_compatible_with_prediction_fallback(

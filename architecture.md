@@ -32,8 +32,8 @@ The laptop/server is the system coordinator. The embedded devices collect input 
 ### ESP32-CAM
 
 - Connects to configured Wi-Fi.
-- Provides an MJPEG stream and/or JPEG snapshot endpoint.
-- Reports health without performing ML inference.
+- Provides `GET /health` and a bounded `GET /capture` JPEG snapshot endpoint.
+- Reports health without performing occupancy inference.
 - Uses a fixed camera position so configured slot regions remain stable.
 
 ### ESP32 DevKit controller
@@ -54,7 +54,8 @@ The laptop/server is the system coordinator. The embedded devices collect input 
 ### Occupancy service
 
 - Crops one configurable Region of Interest per configured slot from each frame.
-- Supports a deterministic image heuristic and an optional Keras CNN.
+- Uses a deterministic edge-density heuristic; no real labeled occupancy corpus
+  is currently available for a trained classifier.
 - Applies confidence thresholds and temporal smoothing.
 - Persists only accepted state changes; a single failed or uncertain frame does not flip state.
 
@@ -99,6 +100,12 @@ committed demo configuration contains five.
 4. Accepted changes update the current slot state and append occupancy events.
 5. API consumers and the dashboard observe the updated state.
 
+The separate Python camera poller validates bounded JPEG responses and posts
+them to the occupancy API with retry/backoff. Camera transitions cannot clear a
+slot protected by an active RFID session. Calibrating the five ROIs and
+measuring detector accuracy against real scene labels remain physical setup
+tasks.
+
 ### Forecast and comparison
 
 1. Historical occupancy and contextual data are converted into shared sequences.
@@ -130,6 +137,14 @@ Request and response schemas must be defined explicitly and shared by the API an
 - `config/rois.example.json` documents one camera region per demo slot; a local calibrated ROI file is not committed.
 - The backend initially runs as one process on a laptop/server with SQLite stored on a persistent local volume.
 - Firmware contains no backend secrets and receives the backend URL and Wi-Fi credentials through local configuration.
+- Controller and camera JSON serial metrics can be captured with
+  `scripts.hardware_evaluation`; operator-entered observations are required for
+  RFID trial denominators, LED correctness, and power measurements. Empty
+  physical measurements are explicitly `NOT TESTED`.
+- Physical operation requires the server to be reachable from a trusted LAN.
+  The current development service binds to loopback by default and the API has
+  no device authentication or TLS; networking must be deliberately configured
+  and access restricted before attaching a device.
 
 ## Quality Attributes
 

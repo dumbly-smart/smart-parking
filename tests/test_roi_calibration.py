@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from scripts.calibrate_camera_rois import build_roi_config
+from scripts.calibrate_camera_rois import build_roi_config, capture_jpeg
 
 
 def test_roi_calibration_accepts_in_bounds_regions_for_every_slot() -> None:
@@ -50,3 +50,42 @@ def test_roi_calibration_rejects_out_of_bounds_or_overlapping_regions() -> None:
             rectangles={1: (0, 0, 50, 50), 2: (40, 40, 50, 50)},
             heuristic=heuristic,
         )
+
+
+@pytest.mark.parametrize(
+    ("timeout", "maximum_bytes"),
+    [(0, 1024), (-1, 1024), (5, 0), (5, -1), (5, 5 * 1024 * 1024 + 1)],
+)
+def test_camera_capture_rejects_unbounded_or_invalid_limits(
+    monkeypatch: pytest.MonkeyPatch, timeout: float, maximum_bytes: int
+) -> None:
+    called = False
+
+    def unexpected_open(*_args: object, **_kwargs: object) -> None:
+        nonlocal called
+        called = True
+        raise AssertionError("validation must happen before the network request")
+
+    monkeypatch.setattr("scripts.calibrate_camera_rois.urlopen", unexpected_open)
+    with pytest.raises(ValueError, match=r"timeout|size limit"):
+        capture_jpeg(
+            "http://camera/capture", timeout=timeout, maximum_bytes=maximum_bytes
+        )
+
+    assert called is False
+
+
+def test_camera_capture_requires_jpeg_content_type(monkeypatch: pytest.MonkeyPatch) -> None:
+    class Response:
+        def __init__(self) -> None:
+            self.headers = {"Content-Type": "text/plain"}
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+    monkeypatch.setattr("scripts.calibrate_camera_rois.urlopen", lambda *_a, **_k: Response())
+    with pytest.raises(ValueError, match="image/jpeg"):
+        capture_jpeg("http://camera/capture")

@@ -1,6 +1,6 @@
 # Smart Parking Project Progress
 
-Last updated: 2026-10-14
+Last updated: 2026-10-20
 
 ## Current Status
 
@@ -25,7 +25,7 @@ implemented.
 | Vision occupancy pipeline | Complete | 22 focused and 90 full tests pass; dynamic slots, ROI heuristic, smoothing, persistence, and JPEG API work |
 | Prediction comparison | Complete | 116 focused prediction tests and 218 full tests pass; persisted comparisons and guarded runtime forecasts work without TensorFlow installed |
 | Dashboard | Complete | Dynamic live slots, selected settings, forecast state, and both comparison tables are served at `/dashboard` without RFID rendering |
-| Firmware integration | Not started | Both sketches build and complete the documented hardware flow |
+| Firmware integration | Software complete; physical validation pending | Both firmware targets compile, controller fail-closed/idempotent flow is implemented, and capture/recovery telemetry is privacy-safe; exact-board flash, wiring, local config, and bench results remain pending |
 | End-to-end demo | Complete | Seeded history plus synthetic camera frames, lifecycle entry, allocation comparison, prediction, and dashboard APIs run through the documented simulator without hardware |
 | Academic review dataset and experiments | Complete | 14-day privacy-safe dataset exported; LSTM, GRU, and Transformer trained and API-validated; 120-scenario optimizer benchmark and report generated |
 
@@ -175,9 +175,10 @@ implemented.
 
 ## Next Task
 
-Flash the controller and camera on the exact board revisions, capture a real
-camera view, calibrate the five ROIs, and run the isolated physical checklist.
-The academic report should then be reviewed against the institution's template.
+Configure local trusted-LAN firmware settings, grant operator USB serial
+access, flash the confirmed boards, capture a real camera view, calibrate the
+five ROIs, and run the isolated physical checklist. Review the academic report
+against the institution's template.
 
 ## Blockers
 
@@ -191,3 +192,93 @@ Physical integration requires the listed hardware, local Wi-Fi credentials, came
 - Generated an editable single-column DOCX and a 16-page A4 PDF from the existing measured dataset/model/optimizer results. Added demo procedure, software/physical test checklist, limitations, and submission checklist. The dataset/model Drive links are included and institution-restricted as previously documented.
 - The institution's base paper template and physical boards were not available; no actual camera, RFID, gate, power, or microcontroller inference result is claimed. Review the report against the institutional template and complete the isolated bench checks when hardware is available.
 - Final verification: `make test lint` passes (239 tests; two dependency deprecation warnings), `make firmware-controller firmware-camera` passes, and `make final-submission` generates the 16-page A4 PDF and editable DOCX. A copied-database live API smoke returned a finite GRU forecast with no fallback. Dataset CSV counts, timestamp ordering/uniqueness, no-UID export, ZIP CRC, SVG XML, and `git diff --check` also passed.
+
+## 2026-10-20 — Completion audit and integration hardening
+
+- Added `docs/FINAL_COMPLETION_AUDIT.md` with an evidence-based inventory and
+  explicit software, compile-only, hardware-pending, and academic manual states.
+- Hardened dashboard event privacy and request serialization; added direct SSE
+  cursor/redaction coverage.
+- Camera firmware now completes bounded JPEG writes and emits privacy-safe
+  capture status, latency, byte-count, and heap events. ROI calibration rejects
+  invalid timeouts and unbounded reads. Occupancy API response headers expose
+  server processing time, which the poller can persist as timestamped JSONL.
+- Added controller telemetry for RFID detection, API result/latency, Wi-Fi
+  recovery, gate command delay, and heap; events contain no UIDs or secrets.
+  Added CSV/JSON summarization and a repeatable supervised hardware procedure.
+- Added editable monochrome block, wiring, and circuit diagrams, A4 PDF
+  exports, a BOM, and firmware-to-pin-map validation. All 29 mappings match
+  firmware headers; this is not physical validation.
+- Rebuilt the formal monochrome A4 report with verified references and
+  SHA-256-traceable evidence copies. Preserved the separate root clean PDF and
+  the prior review report artifacts.
+- A temporary-database demo exercised camera uploads, entry, allocation
+  comparisons, prediction, and final occupancy without changing live data.
+- Final verification: `make test` passes (257 tests; two dependency
+  deprecation warnings), `make lint` passes, controller and camera firmware
+  compile, `make final-submission` rebuilds the report, the 29-pin diagram
+  validator passes, and `git diff --check` is clean. The isolated E2E run
+  completed with three synthetic frames and a successful entry/allocation/
+  forecast flow. Physical upload, serial capture, local Wi-Fi setup, ROI
+  calibration, and power/actuation measurements remain pending.
+
+## 2026-10-21 — Local workstation integration
+
+- Configured ignored, mode-0600 controller and camera Wi-Fi settings from the
+  active NetworkManager profile. The controller points to the current WLAN
+  address on port 8001; no credentials are stored in tracked source.
+- Added optional bearer authentication for `/api/*`. Started an enabled user
+  systemd service bound only to the current WLAN address; `/health` is public,
+  unauthorized API access returns 401, and an authorized status request returns
+  200. The token is stored in a mode-0600 ignored environment file. The camera
+  poller accepts this token through `SMART_PARKING_DEVICE_API_TOKEN`.
+- Updated hardware setup and audit docs. The server and existing dashboard share
+  the default SQLite file; the development server remains on loopback.
+- Verification: 260 tests pass (two upstream deprecation warnings), Ruff passes,
+  both configured firmware targets compile, report DOCX/PDF rebuild succeeds,
+  29-pin diagram validation and `git diff --check` pass. Live API auth behavior
+  returned health 200, unauthenticated API 401, authenticated API 200.
+- The USB serial adapter is inaccessible to the current user (not in `uucp`);
+  board identity is not confirmed. No firmware was flashed, and no RFID, servo,
+  LED, camera, or power measurement is claimed. Update the service/controller
+  address together if this Wi-Fi address changes.
+
+## 2026-10-21 — First physical controller validation
+
+- Read-only probing identified the attached controller as ESP32-D0WD-V3 revision
+  3.1 with 4 MiB flash. Saved a private mode-0600 full-flash readback before
+  writing the controller image. esptool verified hashes for the bootloader,
+  partition table, and firmware; a second app image with RC522 diagnostics was
+  also flashed and hash-verified. The backup is ignored by Git.
+- Serial telemetry confirmed two controller boots and Wi-Fi connections. The
+  protected server recorded successful health and authenticated parking-status
+  requests from the ESP32 (8 of each after the diagnostic flash). Two boot heap
+  observations and the failed RC522 check are captured in `output/hardware/`;
+  the CSV/JSON summary marks unmeasured rates/timing as `NOT TESTED`.
+- Added an `rfid_reader` boot event exposing the MFRC522 VersionReg value without
+  logging card identifiers or credentials. It read `0xFF` before rewiring and `0x00` afterward (both `ready=false`); no
+  card-read event reaches the server. The reader still does not answer SPI, so its
+  physical power/reset/select/data connection remains unresolved; verify SDA/SS→GPIO13, SCK→18,
+  MISO→19, MOSI→23, RST→4, 3.3 V and common ground before retesting.
+- No camera health endpoint was found on the local /24. Camera, tag entry/exit,
+  servo actuation, visual LED/OLED checks, and current draw remain unverified.
+- `make test` passes (261 tests, two upstream deprecation warnings), Ruff passes,
+  controller firmware compiles (46,776 B RAM / 846,569 B flash), and `git diff
+  --check` is clean.
+
+## 2026-10-21 — Follow-up user hardware report and estimates
+
+- The user reports that the assembled tabletop hardware works after rewiring.
+  This is recorded as a qualitative user report; no post-rewire serial capture,
+  trial count, camera capture, or quantitative hardware result was provided.
+- Updated the academic and experimental reports to distinguish that report from
+  earlier pre-rewire RC522 probes and from measured evidence. Added a separate
+  low-confidence engineering-estimate table for all hardware evaluation metrics,
+  including assumed success/latency ranges, component timing/current estimates,
+  historical measured free heap, and camera accuracy marked not estimable. None
+  of the assumed ranges is presented as an observation or synthetic benchmark.
+- Regenerated DOCX/PDF and the experimental report; `git diff --check` passes.
+  Final verification after the estimate/report edits: 261 tests pass (two upstream
+  deprecation warnings), Ruff passes, both firmware targets compile, the DOCX/PDF
+  rebuild succeeds, and `git diff --check` is clean. The generated report does not
+  change the remaining physical-validation requirements.
