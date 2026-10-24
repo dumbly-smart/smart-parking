@@ -126,10 +126,45 @@ String backendUrl(const char *path) {
   return base + path;
 }
 
+byte transferRfidByteBitBanged(byte value) {
+  byte received = 0;
+  for (uint8_t bit = 0; bit < 8; ++bit) {
+    digitalWrite(Pins::RfidMosi, (value & 0x80) ? HIGH : LOW);
+    delayMicroseconds(2);
+    digitalWrite(Pins::RfidSck, HIGH);
+    received = static_cast<byte>((received << 1) |
+                                 (digitalRead(Pins::RfidMiso) == HIGH ? 1 : 0));
+    delayMicroseconds(2);
+    digitalWrite(Pins::RfidSck, LOW);
+    value <<= 1;
+  }
+  return received;
+}
+
+byte readRfidVersionBitBanged() {
+  pinMode(Pins::RfidSs, OUTPUT);
+  pinMode(Pins::RfidSck, OUTPUT);
+  pinMode(Pins::RfidMosi, OUTPUT);
+  pinMode(Pins::RfidMiso, INPUT_PULLUP);
+  pinMode(Pins::RfidReset, OUTPUT);
+  digitalWrite(Pins::RfidSs, HIGH);
+  digitalWrite(Pins::RfidSck, LOW);
+  digitalWrite(Pins::RfidReset, LOW);
+  delayMicroseconds(10);
+  digitalWrite(Pins::RfidReset, HIGH);
+  delay(50);
+  digitalWrite(Pins::RfidSs, LOW);
+  delayMicroseconds(2);
+  transferRfidByteBitBanged(0x80 | MFRC522::VersionReg);
+  const byte version = transferRfidByteBitBanged(0x00);
+  digitalWrite(Pins::RfidSs, HIGH);
+  return version;
+}
+
 byte readRfidVersionAtLowClock() {
   SPI.beginTransaction(SPISettings(250000, MSBFIRST, SPI_MODE0));
   digitalWrite(Pins::RfidSs, LOW);
-  SPI.transfer(0x80 | ((MFRC522::VersionReg << 1) & 0x7E));
+  SPI.transfer(0x80 | MFRC522::VersionReg);
   const byte version = SPI.transfer(0x00);
   digitalWrite(Pins::RfidSs, HIGH);
   SPI.endTransaction();
@@ -551,6 +586,7 @@ void setup() {
   displayReady = display.begin(SSD1306_SWITCHCAPVCC, Pins::OledAddress);
   showMessage("Initializing RFID");
 
+  const byte bitBangVersion = readRfidVersionBitBanged();
   SPI.begin(Pins::RfidSck, Pins::RfidMiso, Pins::RfidMosi, Pins::RfidSs);
   rfid.PCD_Init();
   const byte readerVersion = rfid.PCD_ReadRegister(MFRC522::VersionReg);
@@ -564,6 +600,7 @@ void setup() {
   readerMetric["event"] = "rfid_reader";
   readerMetric["uptime_ms"] = millis();
   readerMetric["version_register"] = readerVersion;
+  readerMetric["bit_banged_version_register"] = bitBangVersion;
   readerMetric["low_clock_version_register"] = lowClockVersion;
   readerMetric["reset_pin_high"] = resetPinHigh;
   readerMetric["miso_idle_high"] = misoIdleHigh;

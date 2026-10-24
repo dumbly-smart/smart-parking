@@ -71,9 +71,22 @@ def test_controller_adds_bearer_token_without_logging_it() -> None:
 
 def test_controller_reports_rc522_spi_presence_at_boot() -> None:
     setup = function_body("void setup()", "void loop()")
+    low_clock_read = function_body("byte readRfidVersionAtLowClock()", "HttpResult requestHttp(")
+    bit_bang_read = function_body(
+        "byte readRfidVersionBitBanged()", "byte readRfidVersionAtLowClock()"
+    )
+    bit_bang_transfer = function_body(
+        "byte transferRfidByteBitBanged(byte value)", "byte readRfidVersionBitBanged()"
+    )
 
     assert "rfid.PCD_ReadRegister(MFRC522::VersionReg)" in setup
     assert "readRfidVersionAtLowClock()" in setup
+    assert "readRfidVersionBitBanged()" in setup
+    assert "digitalRead(Pins::RfidMiso)" in bit_bang_transfer
+    assert "digitalWrite(Pins::RfidSs, LOW)" in bit_bang_read
+    assert 'readerMetric["bit_banged_version_register"] = bitBangVersion' in setup
+    assert "SPI.transfer(0x80 | MFRC522::VersionReg)" in low_clock_read
+    assert "VersionReg << 1" not in low_clock_read
     assert 'readerMetric["event"] = "rfid_reader"' in setup
     assert 'readerMetric["version_register"] = readerVersion' in setup
     assert 'readerMetric["ready"] = readerVersion != 0x00 && readerVersion != 0xFF' in setup
