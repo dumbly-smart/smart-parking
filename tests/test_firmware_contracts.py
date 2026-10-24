@@ -73,6 +73,11 @@ def test_controller_reports_rc522_spi_presence_at_boot() -> None:
     setup = function_body("void setup()", "void loop()")
 
     assert "rfid.PCD_ReadRegister(MFRC522::VersionReg)" in setup
+    assert "readRfidVersionAtLowClock()" in setup
     assert 'readerMetric["event"] = "rfid_reader"' in setup
     assert 'readerMetric["version_register"] = readerVersion' in setup
     assert 'readerMetric["ready"] = readerVersion != 0x00 && readerVersion != 0xFF' in setup
+    assert 'readerMetric["low_clock_version_register"] = lowClockVersion' in setup
+    assert 'const bool resetPinHigh = digitalRead(Pins::RfidReset) == HIGH' in setup
+    assert 'readerMetric["reset_pin_high"] = resetPinHigh' in setup
+    assert 'readerMetric["miso_idle_high"] = misoIdleHigh' in setup

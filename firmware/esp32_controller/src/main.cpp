@@ -126,6 +126,16 @@ String backendUrl(const char *path) {
   return base + path;
 }
 
+byte readRfidVersionAtLowClock() {
+  SPI.beginTransaction(SPISettings(250000, MSBFIRST, SPI_MODE0));
+  digitalWrite(Pins::RfidSs, LOW);
+  SPI.transfer(0x80 | ((MFRC522::VersionReg << 1) & 0x7E));
+  const byte version = SPI.transfer(0x00);
+  digitalWrite(Pins::RfidSs, HIGH);
+  SPI.endTransaction();
+  return version;
+}
+
 HttpResult requestHttp(const String &url, const String &method, const String &body = "",
                        uint32_t timeoutMs = kHttpTimeoutMs) {
   HttpResult result;
@@ -544,10 +554,19 @@ void setup() {
   SPI.begin(Pins::RfidSck, Pins::RfidMiso, Pins::RfidMosi, Pins::RfidSs);
   rfid.PCD_Init();
   const byte readerVersion = rfid.PCD_ReadRegister(MFRC522::VersionReg);
+  pinMode(Pins::RfidSs, OUTPUT);
+  digitalWrite(Pins::RfidSs, HIGH);
+  const byte lowClockVersion = readRfidVersionAtLowClock();
+  pinMode(Pins::RfidMiso, INPUT_PULLUP);
+  const bool misoIdleHigh = digitalRead(Pins::RfidMiso) == HIGH;
+  const bool resetPinHigh = digitalRead(Pins::RfidReset) == HIGH;
   JsonDocument readerMetric;
   readerMetric["event"] = "rfid_reader";
   readerMetric["uptime_ms"] = millis();
   readerMetric["version_register"] = readerVersion;
+  readerMetric["low_clock_version_register"] = lowClockVersion;
+  readerMetric["reset_pin_high"] = resetPinHigh;
+  readerMetric["miso_idle_high"] = misoIdleHigh;
   readerMetric["ready"] = readerVersion != 0x00 && readerVersion != 0xFF;
   readerMetric["free_heap_bytes"] = ESP.getFreeHeap();
   serializeJson(readerMetric, Serial);

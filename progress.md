@@ -282,3 +282,22 @@ Physical integration requires the listed hardware, local Wi-Fi credentials, came
   deprecation warnings), Ruff passes, both firmware targets compile, the DOCX/PDF
   rebuild succeeds, and `git diff --check` is clean. The generated report does not
   change the remaining physical-validation requirements.
+
+## 2026-10-24 — Controller Wi-Fi and RC522 diagnostics
+
+- Reconfigured the ignored, mode-0600 local ESP32 credentials to the active
+  workstation Wi-Fi and updated the controller API address. Flashed the
+  controller; PlatformIO verified the firmware image hash. The ESP32 associated
+  with Wi-Fi and the authenticated hardware API logged repeated status `200`
+  responses. The dashboard continues to use the shared local SQLite state.
+- Added a boot diagnostic that compares the MFRC522 library read with a direct
+  250 kHz SPI version-register read, and reports reset and idle-MISO levels.
+  The live board reports `VersionReg=0x00` at both speeds, reset high, and
+  MISO high while idle. The reader's power LED is lit in the supplied photo.
+- The user confirms the pin mapping is correct. No RFID UID was read and no
+  gate actuation was attempted; the gate remains closed. This evidence points
+  to a nonresponsive reader or SPI signal path, but does not distinguish a
+  defective RC522 from select/clock/data continuity at the module.
+- `make test` passes (261 tests, two upstream deprecation warnings), Ruff
+  passes, and the controller firmware compiles. A private 4 MiB pre-diagnostic
+  flash backup remains ignored by Git with mode 0600.
