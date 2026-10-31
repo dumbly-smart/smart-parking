@@ -5,32 +5,33 @@ allocation:
     waiting: 0.20
     fairness: 0.15
 scene:
-  asset: parking-lot.glb
-  asset_slot_ids: [1, 2, 3, 4, 5]
-  width: 18.35
+  asset: null
+  asset_slot_ids: []
+  width: 190
+  center: {x: 0, z: 0}
 slots:
   - id: 1
-    name: S1
+    name: S501
     walking_distance: 0.20
-    zone: north
-    scene: {position: {x: -3.85, z: -3.48}, heading: 1.5707963268, entry_route: [{x: -8.7, z: 0}, {x: -6.5, z: 0}, {x: -4.8, z: 0}, {x: -3.85, z: -1.3}, {x: -3.85, z: -3.48}], exit_route: [{x: -3.85, z: -3.48}, {x: -3.85, z: -1.3}, {x: -2.8, z: 0}, {x: 6.7, z: 0}, {x: 8.7, z: 0}]}
+    zone: S
+    scene: {position: {x: -86.25, z: -26.5}, heading: 0, entry_route: [{x: 8, z: -20}, {x: -40, z: -20}, {x: -86.25, z: -20}, {x: -86.25, z: -23}, {x: -86.25, z: -26.5}], exit_route: [{x: -86.25, z: -26.5}, {x: -86.25, z: -23}, {x: -86.25, z: -20}, {x: -40, z: -20}, {x: 8, z: -20}]}
   - id: 2
-    name: S2
+    name: S502
     walking_distance: 0.35
-    zone: north
-    scene: {position: {x: -3.85, z: 3.48}, heading: -1.5707963268, entry_route: [{x: -8.7, z: 0}, {x: -6.5, z: 0}, {x: -4.8, z: 0}, {x: -3.85, z: 1.3}, {x: -3.85, z: 3.48}], exit_route: [{x: -3.85, z: 3.48}, {x: -3.85, z: 1.3}, {x: -2.8, z: 0}, {x: 6.7, z: 0}, {x: 8.7, z: 0}]}
+    zone: S
+    scene: {position: {x: -83.75, z: -26.5}, heading: 0, entry_route: [{x: 8, z: -20}, {x: -40, z: -20}, {x: -83.75, z: -20}, {x: -83.75, z: -23}, {x: -83.75, z: -26.5}], exit_route: [{x: -83.75, z: -26.5}, {x: -83.75, z: -23}, {x: -83.75, z: -20}, {x: -40, z: -20}, {x: 8, z: -20}]}
   - id: 3
-    name: S3
+    name: S503
     walking_distance: 0.50
-    zone: central
-    scene: {position: {x: 0, z: -3.48}, heading: 1.5707963268, entry_route: [{x: -8.7, z: 0}, {x: -4.0, z: 0}, {x: -1.0, z: 0}, {x: 0, z: -1.3}, {x: 0, z: -3.48}], exit_route: [{x: 0, z: -3.48}, {x: 0, z: -1.3}, {x: 1.0, z: 0}, {x: 6.7, z: 0}, {x: 8.7, z: 0}]}
+    zone: S
+    scene: {position: {x: -81.25, z: -26.5}, heading: 0, entry_route: [{x: 8, z: -20}, {x: -40, z: -20}, {x: -81.25, z: -20}, {x: -81.25, z: -23}, {x: -81.25, z: -26.5}], exit_route: [{x: -81.25, z: -26.5}, {x: -81.25, z: -23}, {x: -81.25, z: -20}, {x: -40, z: -20}, {x: 8, z: -20}]}
   - id: 4
-    name: S4
+    name: S504
     walking_distance: 0.70
-    zone: south
-    scene: {position: {x: 0, z: 3.48}, heading: -1.5707963268, entry_route: [{x: -8.7, z: 0}, {x: -4.0, z: 0}, {x: -1.0, z: 0}, {x: 0, z: 1.3}, {x: 0, z: 3.48}], exit_route: [{x: 0, z: 3.48}, {x: 0, z: 1.3}, {x: 1.0, z: 0}, {x: 6.7, z: 0}, {x: 8.7, z: 0}]}
+    zone: S
+    scene: {position: {x: -78.75, z: -26.5}, heading: 0, entry_route: [{x: 8, z: -20}, {x: -40, z: -20}, {x: -78.75, z: -20}, {x: -78.75, z: -23}, {x: -78.75, z: -26.5}], exit_route: [{x: -78.75, z: -26.5}, {x: -78.75, z: -23}, {x: -78.75, z: -20}, {x: -40, z: -20}, {x: 8, z: -20}]}
   - id: 5
-    name: S5
+    name: S505
     walking_distance: 0.90
-    zone: south
-    scene: {position: {x: 3.85, z: -3.48}, heading: 1.5707963268, entry_route: [{x: -8.7, z: 0}, {x: -3.0, z: 0}, {x: 2.8, z: 0}, {x: 3.85, z: -1.3}, {x: 3.85, z: -3.48}], exit_route: [{x: 3.85, z: -3.48}, {x: 3.85, z: -1.3}, {x: 4.8, z: 0}, {x: 6.7, z: 0}, {x: 8.7, z: 0}]}
+    zone: S
+    scene: {position: {x: -76.25, z: -26.5}, heading: 0, entry_route: [{x: 8, z: -20}, {x: -40, z: -20}, {x: -76.25, z: -20}, {x: -76.25, z: -23}, {x: -76.25, z: -26.5}], exit_route: [{x: -76.25, z: -26.5}, {x: -76.25, z: -23}, {x: -76.25, z: -20}, {x: -40, z: -20}, {x: 8, z: -20}]}

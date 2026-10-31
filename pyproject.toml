@@ -12,6 +12,7 @@ dependencies = [
   "httpx>=0.28,<1",
   "numpy>=2.0,<3",
   "pillow>=11,<13",
+  "qrcode[pil]>=8,<9",
   "pydantic-settings>=2.10,<3",
   "PyYAML>=6.0,<7",
   "python-multipart>=0.0.20,<1",
@@ -27,12 +28,13 @@ dev = [
 ml = ["tensorflow>=2.20,<3", "matplotlib>=3.10,<4"]
 review = ["python-docx>=1.1,<2"]
 hardware = ["pyserial>=3.5,<4"]
+sumo = ["eclipse-sumo>=1.28,<2", "traci>=1.28,<2"]
 
 [tool.setuptools.packages.find]
 include = ["backend*", "optimization*", "prediction*", "vision*"]
 
 [tool.setuptools.package-data]
-"backend.app" = ["static/*.css", "static/*.html", "static/*.js"]
+"backend.app" = ["static/*.css", "static/*.html", "static/*.js", "static/data/*.json"]
 
 [tool.pytest.ini_options]
 addopts = "-ra --strict-markers"

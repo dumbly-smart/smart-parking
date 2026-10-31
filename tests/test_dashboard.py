@@ -44,33 +44,9 @@ def make_settings(
         ),
         encoding="utf-8",
     )
-    roi_path = tmp_path / "rois.json"
-    roi_path.write_text(
-        json.dumps(
-            {
-                "heuristic": {
-                    "edge_threshold": 0.12,
-                    "minimum_confidence": 0.65,
-                    "required_consecutive_frames": 3,
-                },
-                "slots": [
-                    {
-                        "slot_id": slot_id,
-                        "x": (index - 1) * 20,
-                        "y": 0,
-                        "width": 20,
-                        "height": 20,
-                    }
-                    for index, slot_id in enumerate(slot_ids, start=1)
-                ],
-            }
-        ),
-        encoding="utf-8",
-    )
     return Settings(
         database_url=f"sqlite:///{tmp_path / 'parking.db'}",
         parking_config_path=parking_path,
-        roi_config_path=roi_path,
         selected_optimizer=selected_optimizer,
         selected_predictor=selected_predictor,
         prediction_artifact_directory=tmp_path / "artifacts",
@@ -103,12 +79,16 @@ def test_dashboard_serves_safe_bootstrap_and_assets(tmp_path: Path) -> None:
     assert set(bootstrap_data) == {
         "selected_optimizer",
         "selected_predictor",
+        "predictor_comparison",
         "scene",
     }
+    assert len(bootstrap_data["predictor_comparison"]) == 4
     assert bootstrap_data["scene"]["asset"] is None
     assert set(bootstrap_data["scene"]["slots"]) == {"1", "2", "3", "4", "5"}
     assert stylesheet.status_code == 200
     assert javascript.status_code == 200
+    assert "Compare live bay assignment with GA, PSO, ACO, and NSGA-II" in page.text
+    assert "Running GA, PSO, ACO, and NSGA-II" in javascript.text
 
 
 def test_dashboard_supports_dynamic_slots_and_uses_privacy_safe_assets(
@@ -151,3 +131,29 @@ def test_dashboard_data_apis_remain_compatible_with_prediction_fallback(
     assert prediction.json()["model"] == "baseline"
     assert prediction.json()["fallback_reason"] == "insufficient_history"
     assert prediction.json()["target_at"]
+
+
+def test_dashboard_has_labeled_predictor_comparison_when_runtime_has_no_runs(
+    tmp_path: Path,
+) -> None:
+    settings = make_settings(tmp_path)
+    with TestClient(create_app(settings)) as client:
+        benchmarks = client.get("/api/benchmarks/predictors")
+        page = client.get("/dashboard")
+        javascript = client.get("/static/dashboard.js")
+
+    assert benchmarks.json() == {"runs": []}
+    assert 'id="predictor-provenance"' in page.text
+    assert 'id="predictor-source" class="comparison-source">ACTUAL TEST RESULTS</span>' in page.text
+    assert "synthetic dataset" in page.text
+    assert "0.120875" in page.text
+    assert "0.028620" in page.text
+    assert "0.169173" in page.text
+    assert "0.098055" in page.text
+    assert "0.013891" in page.text
+    assert "0.117862" in page.text
+    assert "0.223783 ms" in page.text
+    assert "bootstrap.predictor_comparison" in javascript.text
+    assert "STORED_PREDICTOR_RESULTS" in javascript.text
+    assert "persistence_baseline" in page.text
+    assert "synthetic" in javascript.text.lower()

@@ -1,0 +1,32 @@
+{
+  "passed": 12,
+  "checks": [
+    "City shadows are enabled, rendered and cover the district",
+    "Building shadow masses and street-light positions exist",
+    "Continuous terrain and atmospheric clouds exist",
+    "Textured surfaces retain filtered detail",
+    "Full vehicle geometry is retained in distant batches",
+    "High detail uses supersampled rendering",
+    "Terrain has a finite, unobstructed basement opening",
+    "SUMO street network remains on flat terrain",
+    "Balanced quality lowers resolution without dropping model geometry",
+    "Basement inspection hides surrounding terrain and city",
+    "Golden hour changes the lighting state",
+    "Enabled shadows visibly change the rendered city"
+  ],
+  "shadowPixelDifference": 3.0783382594417077,
+  "retainedVehicleComponents": [
+    204,
+    207,
+    205
+  ],
+  "environment": {
+    "visible": true,
+    "clouds": 18,
+    "terrainVertices": 11449,
+    "terrainOpening": true,
+    "textures": 7,
+    "anisotropy": 8,
+    "mode": "golden"
+  }
+}

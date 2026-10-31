@@ -25,6 +25,9 @@ secrets.*
 *.sqlite
 *.sqlite3
 data/
+!backend/app/static/data/
+!backend/app/static/data/*.geojson
+!backend/app/static/data/select-citywalk-b3-layout.json
 datasets/
 artifacts/
 /models/

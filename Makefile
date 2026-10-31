@@ -1,4 +1,4 @@
-.PHONY: install test lint run review review-dataset review-ml review-package-models review-optimizers review-report final-submission camera-ingest calibrate-rois hardware-capture hardware-summary firmware-controller firmware-camera
+.PHONY: install test lint run review review-dataset review-ml review-package-models review-optimizers review-report final-submission hardware-capture hardware-summary firmware-controller
 
 REVIEW_ROOT = review_outputs/2026-10-15
 REVIEW_DB = sqlite:///$(REVIEW_ROOT)/dataset/review.db
@@ -15,7 +15,7 @@ lint:
 	$(PYTHON) -m ruff check .
 
 run:
-	$(PYTHON) -m uvicorn backend.app.main:app --reload
+	$(PYTHON) -m uvicorn backend.app.main:app --reload --host 0.0.0.0
 
 review-dataset:
 	$(PYTHON) -m scripts.create_review_dataset
@@ -37,12 +37,6 @@ review: review-package-models review-optimizers review-report
 final-submission:
 	$(PYTHON) -m scripts.build_final_submission
 
-camera-ingest:
-	$(PYTHON) -m scripts.camera_ingest
-
-calibrate-rois:
-	$(PYTHON) -m scripts.calibrate_camera_rois
-
 hardware-capture:
 	$(PYTHON) -m scripts.hardware_evaluation capture --port $(PORT) --output $(OUTPUT)
 
@@ -51,6 +45,3 @@ hardware-summary:
 
 firmware-controller:
 	$(PIO) run -d firmware/esp32_controller
-
-firmware-camera:
-	$(PIO) run -d firmware/esp32_cam

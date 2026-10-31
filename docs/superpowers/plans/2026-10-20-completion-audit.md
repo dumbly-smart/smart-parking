@@ -1,36 +1,20 @@
-# Smart Parking Completion Audit Plan
+# Completion Audit — Current Scope
 
-> **For agentic workers:** Use the current project task instructions; this plan is executed inline and does not require an approval gate.
+## Goal
 
-**Goal:** Close verifiable software, firmware, diagram, evaluation, and academic-deliverable gaps without claiming unperformed physical tests.
+Complete and document the RFID-based smart parking system without requiring external scene sensing.
 
-**Architecture:** Preserve the FastAPI/SQLite, ESP32 controller, ESP32-CAM, ROI heuristic, existing ML/optimizer experiments, and dashboard boundaries. Add focused fixes and evidence artifacts, leaving physical validation clearly marked as pending when the attached board cannot be accessed.
+## Work areas
 
-**Tech Stack:** Python, FastAPI, SQLite, pytest, Ruff, PlatformIO, Arduino C++, Graphviz, DOCX/PDF tooling.
+1. Preserve atomic RFID sessions, idempotency and fail-closed gate behavior.
+2. Keep the controller, server, database, dashboard, prediction and allocation interfaces consistent.
+3. Verify pin documentation against firmware and keep power guidance explicit.
+4. Record hardware observations with timestamps and retain `NOT TESTED` for measurements not collected.
+5. Generate the monochrome report and diagrams from reproducible project sources.
 
-**Spec:** User's Smart Parking Project Completion Prompt (2026-10-20).
+## Acceptance evidence
 
-## Global Constraints
-
-- Never commit credentials, calibrated private configuration, local databases, or runtime artifacts.
-- Preserve synthetic-versus-measured provenance; never fabricate hardware metrics or citations.
-- Preserve the existing manually reviewed PDF; build revised report outputs separately.
-- Keep the gate fail-closed and the servo demo-only with separate regulated power and common ground.
-
-## Review Focus
-
-- RFID retries, restart recovery, invalid server replies, and event idempotency — controller/API integration tests and firmware compile.
-- Camera invalid/offline/conflicting frames — occupancy and camera-ingest tests.
-- Stable slot IDs and configurable geometry — dashboard tests.
-- Diagram GPIO labels and hardware metrics provenance — validator and evaluation harness.
-- Report claims, references, monochrome output, and generated-vs-authoritative file paths — report rebuild and checklist.
-
-## Tasks
-
-1. Audit existing documentation, source, tests, benchmark outputs, and hardware status; write `docs/FINAL_COMPLETION_AUDIT.md`.
-2. Fix hardware event/dashboard regressions and add integration coverage for ordered, privacy-safe event delivery.
-3. Harden camera capture, ingestion, ROI handling, and occupancy reconciliation with focused tests.
-4. Validate controller and camera firmware builds; create a serial measurement logger and mark unmeasured instruments as `NOT TESTED`.
-5. Generate validated monochrome diagrams, pin table, BOM, and electrical safety instructions from firmware pin definitions.
-6. Verify stored ML/optimizer outputs and rebuild an academic DOCX/PDF into a new output directory without overwriting the reviewed PDF.
-7. Update architecture/decisions/progress/checklist, then run `make test`, `make lint`, both firmware targets, `make final-submission`, diagram validation, and `git diff --check`.
+- Software demo exercises entry, allocation, prediction and dashboard reconciliation without physical devices.
+- Controller build and captured RFID/API observations are reported separately.
+- Report tables and figures agree with stored source metrics.
+- No estimated or simulated value is labeled as a physical measurement.

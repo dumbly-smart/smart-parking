@@ -1,0 +1,31 @@
+digraph ParkingTransactionFlow {
+  graph [rankdir=TB, bgcolor="white", pad="0.18", nodesep="0.28", ranksep="0.40", fontname="Times New Roman", fontsize=13, labelloc="t", label="RFID transaction and parking allocation"];
+  node [shape=box, style="solid", color="black", fontcolor="black", fontname="Times New Roman", fontsize=10, margin="0.12,0.08"];
+  edge [color="black", fontcolor="black", fontname="Times New Roman", fontsize=9, arrowsize=0.7];
+  start [shape=oval, label="RFID tag presented"];
+  normalize [label="Read UID; normalize and suppress duplicate scans"];
+  status [label="Request current server status"];
+  known [shape=diamond, label="Wi-Fi and server state\nvalid and known?", width=1.8, height=0.8];
+  direction [label="Determine entry or exit\nfrom active session state"];
+  entry [label="Entry: allocate a free slot\nusing configured objective"];
+  exit [label="Exit: locate active vehicle session"];
+  persist [label="Persist request and idempotency key\nbefore sending HTTP request"];
+  post [label="POST entry/exit to FastAPI"];
+  confirm [shape=diamond, label="Response and resulting\nslot/session state confirmed?", width=2.2, height=0.9];
+  error [label="Keep gate closed; show error;\nretry same key or await recovery"];
+  commit [label="Persist completion; update\nOLED and five slot LEDs"];
+  gate [label="Perform one supervised\ndemonstration gate cycle"];
+  end [shape=oval, label="Operation complete"];
+  start -> normalize -> status -> known;
+  known -> direction [label="yes"];
+  known -> error [label="no"];
+  direction -> entry [label="entry"];
+  direction -> exit [label="exit"];
+  entry -> persist;
+  exit -> persist;
+  persist -> post -> confirm;
+  confirm -> commit [label="yes"];
+  confirm -> error [label="no"];
+  error -> status [label="retry / recover"];
+  commit -> gate -> end;
+}

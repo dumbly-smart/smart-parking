@@ -1,0 +1,34 @@
+{
+  "files": {
+    "benchmark_runs.csv": {
+      "sha256": "57d7d982955a54d704b0d068878090b1149ca175bc4f1b79b6257857ac92619b",
+      "source": "review_outputs/2026-10-15/optimization_results/benchmark_runs.csv"
+    },
+    "dataset_metadata.json": {
+      "sha256": "90b3afea1ade487f70a22ad6dba79c97f0f0cbcf408f135cc249cdb5d3985a1a",
+      "source": "review_outputs/2026-10-15/dataset/dataset_metadata.json"
+    },
+    "model_comparison.csv": {
+      "sha256": "4d307e71239b11d97029c2714140609214ef4c104aef1ccf7d3ae3eb33508821",
+      "source": "review_outputs/2026-10-15/ml_results/model_comparison.csv"
+    },
+    "model_comparison.json": {
+      "sha256": "1054713df86c10ad080a2113778ec44b39e531316dc952d2dab053663a3807f7",
+      "source": "review_outputs/2026-10-15/ml_results/model_comparison.json"
+    },
+    "optimizer_comparison.csv": {
+      "sha256": "8a44244e72444ae136c59d0e2730a525feb188cd3fd8f1641f8d333479c378ff",
+      "source": "review_outputs/2026-10-15/optimization_results/optimizer_comparison.csv"
+    },
+    "optimizer_summary.json": {
+      "sha256": "168353957b2f407f1fe452b9fc766bddee18b67734d64202dc44921ce9d487c4",
+      "source": "review_outputs/2026-10-15/optimization_results/optimizer_summary.json"
+    },
+    "sumo_observed_scenarios.jsonl": {
+      "sha256": "2a4f37cf9e965e0adfcae038c4c0bfdf2090850238920c18ca64dc5fac44fb78",
+      "source": "review_outputs/2026-10-15/optimization_results/sumo_observed_scenarios.jsonl"
+    }
+  },
+  "generated_by": "scripts/build_final_submission.py",
+  "note": "Metric and metadata files are copied from the current checkout; CSV line endings are normalized to LF without changing values. The dataset download URL in the report is pinned to commit 5b480d1."
+}

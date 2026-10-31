@@ -191,7 +191,7 @@ def export_dataset(database: Database, output: Path) -> dict[str, object]:
             },
         },
         "privacy": "No RFID UID, vehicle ID, session ID, idempotency key, or secret is exported.",
-        "limitations": "All values are simulated. The generator models five configured slots and does not represent measured site demand, actual weather, camera accuracy, or physical throughput.",  # noqa: E501
+        "limitations": "All values are simulated. The generator models five configured slots and does not represent measured site demand, actual weather, unmeasured site-specific sensing accuracy, or physical throughput.",  # noqa: E501
         "reproduction": "Run `make review-dataset` from the repository root.",
         "sha256": {
             "parking_raw.csv": _sha256(raw_path),
@@ -227,7 +227,7 @@ def export_dataset(database: Database, output: Path) -> dict[str, object]:
         f"The target `{TARGET_NAME}` is occupancy ratio five minutes after each feature timestamp. Each example uses the preceding twelve intervals (60 minutes). The chronological split is 70% train, 15% validation, and 15% test before window construction; actual sequence counts are train {prepared.train.inputs.shape[0]:,}, validation {prepared.validation.inputs.shape[0]:,}, and test {prepared.test.inputs.shape[0]:,}.\n\n"  # noqa: E501
         "Continuous features are standardized using training-partition values only. Bounded and cyclic encodings follow the shared preprocessing contract. The feature builder carries short gaps forward and leaves longer gaps unresolved; sequence construction excludes windows spanning unresolved buckets. This export has no unresolved buckets. RFID values never enter model arrays.\n\n"  # noqa: E501
         "## Limitations\n\n"
-        "All observations are simulated. The generator does not model a measured site, actual weather, camera accuracy, physical throughput, or real waiting times. Five-slot results may not generalize to other facilities.\n\n"  # noqa: E501
+        "All observations are simulated. The generator does not model a measured site, actual weather, unmeasured site-specific sensing accuracy, physical throughput, or real waiting times. Five-slot results may not generalize to other facilities.\n\n"  # noqa: E501
         "## Reproduction and checksums\n\n"
         "From the repository root, run `make review-dataset`. The command recreates the dedicated review database and all exports using the seed and interval listed above. SHA-256 checksums for the raw and feature CSV files are recorded in `dataset_metadata.json`.\n",  # noqa: E501
         encoding="utf-8",

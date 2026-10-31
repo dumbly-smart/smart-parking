@@ -1,0 +1,15 @@
+{
+  "passed": 10,
+  "checks": [
+    "Auto uses a bounded frame-budget resolution",
+    "Distant traffic batches retain detailed geometry with at most nine material submissions",
+    "City draw submissions stay below the original two-thousand-call workload",
+    "Fully occluded cars are skipped behind solid garage slabs",
+    "Overview uses precise depth without logarithmic fragment writes",
+    "Selecting a floor restores every parked model on that floor",
+    "Offscreen city canvas is detected",
+    "GPU rendering stops while the city is offscreen",
+    "Rendering resumes when city returns onscreen",
+    "Manual high detail remains available"
+  ]
+}

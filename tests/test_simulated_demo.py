@@ -62,16 +62,7 @@ class SimulatedApi:
                 owner.paths.append(self.path)
                 size = int(self.headers["Content-Length"])
                 body = self.rfile.read(size)
-                if self.path == "/api/camera/occupancy":
-                    assert self.headers["Content-Type"].startswith("multipart/form-data")
-                    self._reply(
-                        {
-                            "detector": "heuristic",
-                            "observed_at": "2026-09-12T10:00:00Z",
-                            "slots": [],
-                        }
-                    )
-                elif self.path == "/api/vehicle/entry":
+                if self.path == "/api/vehicle/entry":
                     assert json.loads(body) == {
                         "rfid_uid": "CARD-PRIVATE",
                         "idempotency_key": "demo-entry-1",
@@ -169,9 +160,6 @@ def test_demo_calls_existing_apis_and_redacts_rfid(
     output = capsys.readouterr().out
     assert exit_code == 0
     assert simulated_api.paths == [
-        "/api/camera/occupancy",
-        "/api/camera/occupancy",
-        "/api/camera/occupancy",
         "/api/vehicle/entry",
         "/api/parking/status",
         "/api/allocation/run",

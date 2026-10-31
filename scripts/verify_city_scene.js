@@ -1,0 +1,58 @@
+// Run using playwright-cli run-code --filename=scripts/verify_city_scene.js.
+(async (page) => {
+  const checks=[];
+  function check(ok,name){if(!ok)throw Error(name);checks.push(name);}
+  const diagnostics=()=>page.evaluate(()=>document.querySelector('#garage-scene').__garageDiagnostics());
+  await page.setViewportSize({width:1536,height:1100});
+  await page.locator('#city-view').click();
+  await page.waitForTimeout(950);
+  let d=await diagnostics();
+  check(d.cityScope && d.city.visible && d.city.buildings===101,'City view shows the complete 101-building district');
+  check(d.cameraRadius>1200 && d.cameraRadius<2500,'City camera fits district at desktop size');
+  check(d.city.components>70000 && d.city.signalHeads===64,'Detailed instanced city and all signal heads exist');
+  const before=d.city.pedestrianSample;
+  await page.waitForTimeout(350);d=await diagnostics();
+  check(before.some((n,i)=>Math.abs(n-d.city.pedestrianSample[i])>.001),'Park pedestrians walk');
+  await page.locator('#mechanical-animations').uncheck();await page.waitForTimeout(100);const frozen=(await diagnostics()).city;
+  await page.waitForTimeout(300);d=await diagnostics();
+  check(JSON.stringify(frozen.pedestrianSample)===JSON.stringify(d.city.pedestrianSample) && frozen.fountainSample===d.city.fountainSample,'Mechanical switch pauses walking and fountain motion');
+  await page.locator('#mechanical-animations').check();
+  await page.locator('#city-scenery').uncheck();d=await diagnostics();
+  check(!d.city.visible && !d.cityScope,'City scenery can be hidden');
+  await page.locator('#city-view').click();await page.waitForTimeout(750);
+  check((await diagnostics()).city.visible,'City view restores scenery');
+  await page.locator('[data-floor="1"]').click();d=await diagnostics();
+  check(!d.city.visible && d.selectedLevel===1 && d.floorElevations[0].visible,'Basement inspection hides surrounding buildings');
+  await page.locator('#focus-live-bays').click();d=await diagnostics();
+  check(d.selectedLevel===5 && !d.city.visible,'Five live bay focus remains isolated');
+  await page.locator('#city-view').click();await page.waitForTimeout(750);
+  let status=await page.evaluate(async()=>await(await fetch('/api/sumo/status')).json());
+  if(status.state==='stopped')await page.locator('#sumo-start').click();
+  else if(status.state==='paused')await page.locator('#sumo-resume').click();
+  await page.waitForFunction(()=>Number(document.querySelector('#sumo-vehicles').textContent)>0);
+  await page.locator('#sumo-pause').click();await page.waitForTimeout(750);
+  status=await page.evaluate(async()=>await(await fetch('/api/sumo/status')).json());d=await diagnostics();
+  check(Object.keys(status.traffic_lights).length===16,'TraCI publishes all 16 signal controllers');
+  const states=d.city.signalStates;
+  check(states.every(head=>{const chars=head.indices.map(i=>status.traffic_lights[head.controller]?.[i]||'o');const expected=chars.some(c=>'Gg'.includes(c))?'g':chars.some(c=>'yY'.includes(c))?'y':chars.some(c=>'rR'.includes(c))?'r':'o';return expected===head.state;}),'All visible signal heads match native controlled links');
+  const first=states[0],bright={r:'ff4949',y:'ffc557',g:'68eb9d'},index={r:0,y:1,g:2};
+  check(first.state!=='o' && d.city.signalColorSample[index[first.state]]===bright[first.state],'Signal lens instance color matches its live state');
+  const floorCounts=await page.locator('[data-floor-count]').evaluateAll(elements=>elements.map(e=>Number(e.textContent)));
+  check(floorCounts.reduce((a,b)=>a+b,0)===status.vehicles.filter(v=>!v.in_city).length,'City cars are excluded from garage floor counters');
+  await page.locator('#scene-lighting').selectOption('evening');await page.waitForTimeout(300);
+  await page.locator('#garage-scene').screenshot({path:'output/playwright/city-district-evening.png'});
+  await page.locator('#scene-lighting').selectOption('day');
+  await page.locator('#city-garage-marker').click();await page.waitForTimeout(800);d=await diagnostics();
+  check(!d.cityScope && d.cameraRadius<300,'Garage marker returns to building camera');
+  await page.locator('#city-view').click();await page.waitForTimeout(800);
+  const canvas=page.locator('#garage-scene canvas'),rect=await canvas.boundingBox();
+  await page.mouse.move(rect.x+rect.width*.4,rect.y+rect.height*.45);await page.mouse.down({button:'right'});await page.mouse.move(rect.x+rect.width*.48,rect.y+rect.height*.5,{steps:5});await page.mouse.up({button:'right'});
+  check((await diagnostics()).cityScope,'Right-drag panning preserves city mode');
+  await page.setViewportSize({width:390,height:844});await page.locator('#city-view').click();await page.waitForTimeout(850);
+  check(!await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),'Mobile city dashboard has no horizontal page overflow');
+  await page.screenshot({path:'output/playwright/city-district-mobile.png',fullPage:false});
+  await page.setViewportSize({width:1536,height:1100});await page.locator('#city-view').click();await page.waitForTimeout(850);
+  await page.locator('#garage-scene').screenshot({path:'output/playwright/city-district-overview.png'});
+  await page.locator('#sumo-resume').click();
+  return {passed:checks.length,checks,city:{buildings:d.city.buildings,components:d.city.components,signal_heads:d.city.signalHeads}};
+})

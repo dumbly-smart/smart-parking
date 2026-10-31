@@ -50,7 +50,7 @@
     "allocation_present"
   ],
   "horizon_intervals": 1,
-  "limitations": "All values are simulated. The generator models five configured slots and does not represent measured site demand, actual weather, camera accuracy, or physical throughput.",
+  "limitations": "All values are simulated. The generator models five configured slots and does not represent measured site demand, actual weather, site-specific occupancy accuracy, or physical throughput.",
   "lookback_intervals": 12,
   "origin": "prediction.demo_data deterministic generator; no real-world measurements",
   "preprocessing": {

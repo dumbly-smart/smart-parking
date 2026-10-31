@@ -1,0 +1,8 @@
+{
+  "passed": 3,
+  "checks": [
+    "Removed traffic invalidates cached shadows",
+    "Reduced-motion arrivals invalidate shadows",
+    "Reduced-motion departures invalidate shadows"
+  ]
+}

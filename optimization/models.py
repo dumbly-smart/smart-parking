@@ -33,6 +33,10 @@ class AllocationRequest(BaseModel):
     weights: ObjectiveWeights = Field(default_factory=ObjectiveWeights)
     seed: int = 42
     iterations: int = Field(default=30, ge=1, le=10_000)
+    population_size: int = Field(default=48, ge=4, le=512, description="NSGA-II population per generation")
+    generations: int = Field(default=60, ge=1, le=10_000, description="NSGA-II generation count")
+    crossover_probability: float = Field(default=0.9, ge=0, le=1, description="Probability of inheriting a parent bay choice")
+    mutation_probability: float = Field(default=0.12, ge=0, le=1, description="Probability of sampling a fresh available bay")
 
     @field_validator("candidates")
     @classmethod

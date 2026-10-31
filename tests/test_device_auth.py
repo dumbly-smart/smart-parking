@@ -1,10 +1,22 @@
 from __future__ import annotations
 
+import shutil
+from pathlib import Path
+
 from fastapi.testclient import TestClient
 from pydantic import SecretStr
 
+from backend.app.config import Settings
 from backend.app.main import create_app
-from tests.test_occupancy_api import write_settings_files
+
+
+def write_settings_files(tmp_path: Path) -> Settings:
+    config_path = tmp_path / "parking.yaml"
+    shutil.copy(Path(__file__).resolve().parents[1] / "config/parking.yaml", config_path)
+    return Settings(
+        database_url=f"sqlite:///{tmp_path / 'parking.db'}",
+        parking_config_path=config_path,
+    )
 
 
 def test_device_token_protects_api_without_changing_local_health(tmp_path) -> None:

@@ -24,9 +24,6 @@ EVENT_FIELDS = (
     "expected",
     "observed",
     "free_heap_bytes",
-    "capture_bytes",
-    "capture_latency_ms",
-    "jpeg_bytes",
     "sent_bytes",
     "reason",
     "current_ma",
@@ -35,14 +32,11 @@ EVENT_FIELDS = (
 METRICS = (
     "rfid_read_success_rate",
     "api_transaction_success_rate",
-    "camera_capture_success_rate",
     "entry_response_latency_ms",
     "exit_response_latency_ms",
     "led_correctness_rate",
     "wifi_recovery_seconds",
     "servo_command_delay_ms",
-    "camera_capture_latency_ms",
-    "camera_processing_latency_ms",
     "free_heap_bytes",
     "power_current_ma",
 )
@@ -140,19 +134,11 @@ def summarize(events: list[dict[str, Any]]) -> dict[str, Any]:
                 outcomes["rfid_read_success_rate"].append(success)
             if kind in {"api_transaction", "api_result"}:
                 outcomes["api_transaction_success_rate"].append(success)
-            if kind == "camera_capture":
-                outcomes["camera_capture_success_rate"].append(success)
-        elif kind == "camera_capture" and isinstance(event.get("status"), str):
-            outcomes["camera_capture_success_rate"].append(event["status"] == "success")
-        latency = _number(event.get("latency_ms", event.get("capture_latency_ms")))
+        latency = _number(event.get("latency_ms"))
         operation = event.get("operation")
         if latency is not None:
             if kind in {"api_transaction", "api_result"} and operation in {"entry", "exit"}:
                 values[f"{operation}_response_latency_ms"].append(latency)
-            elif kind in {"camera_frame", "camera_capture"}:
-                values["camera_capture_latency_ms"].append(latency)
-            elif kind == "camera_processing":
-                values["camera_processing_latency_ms"].append(latency)
             elif kind in {"gate_timing", "gate_command"}:
                 values["servo_command_delay_ms"].append(latency)
         if kind == "led_observation" and "expected" in event and "observed" in event:
@@ -207,7 +193,12 @@ def write_outputs(events_path: Path, output_directory: Path) -> tuple[Path, Path
     csv_path = output_directory / "hardware_events.csv"
     json_path = output_directory / "hardware_summary.json"
     with csv_path.open("w", newline="", encoding="utf-8") as stream:
-        writer = csv.DictWriter(stream, fieldnames=EVENT_FIELDS, extrasaction="ignore")
+        writer = csv.DictWriter(
+            stream,
+            fieldnames=EVENT_FIELDS,
+            extrasaction="ignore",
+            lineterminator="\n",
+        )
         writer.writeheader()
         for event in events:
             writer.writerow({**event, "raw_json": json.dumps(event, sort_keys=True)})

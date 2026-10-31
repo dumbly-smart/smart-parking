@@ -4,7 +4,7 @@
 
 **Goal:** Add a privacy-safe, framework-free live parking dashboard and a repeatable command-line simulated lifecycle demo.
 
-**Architecture:** FastAPI serves `/dashboard` and static CSS/JavaScript. The browser polls the existing status, optimizer benchmark, predictor benchmark, and prediction APIs; a CLI generates a deterministic JPEG, drives existing camera/lifecycle/allocation APIs, and prints an RFID-free summary.
+**Architecture:** FastAPI serves `/dashboard` and static CSS/JavaScript. The browser polls status, optimizer benchmark, predictor benchmark, and prediction APIs; a CLI drives the RFID lifecycle and allocation APIs and prints a privacy-safe summary.
 
 **Tech Stack:** Python 3.14, FastAPI/Starlette, pytest/TestClient, vanilla HTML/CSS/JavaScript, Python standard library, Ruff, Playwright CLI.
 
@@ -175,7 +175,7 @@ git commit -m "feat: render live parking dashboard"
 
 **Interfaces:**
 - Consumes: `--base-url`, `--rfid-uid`, `--idempotency-key`; existing entry, status, allocation-run, and prediction APIs.
-- Produces: exit code zero and an RFID-free JSON summary containing camera result, entry slot, optimizer comparison, prediction, and final occupancy counts.
+- Produces: exit code zero and an RFID-free JSON summary containing the entry slot, optimizer comparison, prediction, and final occupancy counts.
 
 - [ ] **Step 1: Write a failing request-sequence and privacy test**
 
@@ -189,7 +189,7 @@ def test_demo_calls_existing_apis_and_redacts_rfid(simulated_server, capsys) -> 
     output = capsys.readouterr().out
     assert result == 0
     assert simulated_server.paths == [
-        "/api/camera/occupancy", "/api/vehicle/entry", "/api/parking/status",
+        "/api/vehicle/entry", "/api/parking/status",
         "/api/allocation/run", "/api/prediction", "/api/parking/status",
     ]
     assert "CARD-PRIVATE" not in output
@@ -216,11 +216,10 @@ def request_json(base_url: str, path: str, *, payload: object | None = None) -> 
         return json.load(response)
 ```
 
-Generate a deterministic 1280x720 JPEG with Pillow, encode one multipart request,
-post it to the camera endpoint, post entry, get status, derive a valid allocation
-comparison request from every returned slot, post `algorithm: all`, get
-prediction, and get final status. Build output only from camera outcome counts,
-slot name/ID, benchmark metrics, forecast values, and occupancy counts.
+Post an RFID entry, get status, derive a valid allocation comparison request
+from every returned slot, post `algorithm: all`, get prediction, and get final
+status. Build output only from the entry slot name/ID, benchmark metrics,
+forecast values, and occupancy counts.
 
 - [ ] **Step 4: Verify GREEN**
 

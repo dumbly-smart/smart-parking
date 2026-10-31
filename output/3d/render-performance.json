@@ -1,0 +1,51 @@
+{
+  "viewport": {
+    "width": 776,
+    "height": 650
+  },
+  "snapshot_vehicle_count": 100,
+  "auto": {
+    "fps": 29,
+    "p95_frame_ms": 84,
+    "draw_calls": 785,
+    "triangles": 5255071,
+    "renderer_cpu_ms": 14,
+    "update_cpu_ms": 1,
+    "pixel_ratio": 0.75,
+    "occluded_parked_cars": 379,
+    "shadow_map_size": 2048,
+    "mode": "auto",
+    "retained_components": [
+      204,
+      207,
+      205
+    ],
+    "traffic_models": 100
+  },
+  "high": {
+    "fps": 17,
+    "p95_frame_ms": 133,
+    "draw_calls": 785,
+    "triangles": 5255071,
+    "renderer_cpu_ms": 12,
+    "update_cpu_ms": 1,
+    "pixel_ratio": 1.5,
+    "occluded_parked_cars": 379,
+    "shadow_map_size": 4096,
+    "mode": "high",
+    "retained_components": [
+      204,
+      207,
+      205
+    ],
+    "traffic_models": 100
+  },
+  "baseline": {
+    "fps": 7,
+    "p95_frame_ms": 250,
+    "draw_calls": 2114,
+    "triangles": 8159575,
+    "renderer_cpu_ms": 28,
+    "traffic_models": 99
+  }
+}

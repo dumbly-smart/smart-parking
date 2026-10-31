@@ -1,0 +1,31 @@
+{
+  "simulated_seconds": 1800,
+  "levels_observed": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6
+  ],
+  "fractional_ramp_samples": 265206,
+  "vehicle_position_samples": 1176880,
+  "vehicles_observed": 580,
+  "vehicles_observed_at_ground_and_roof": 28,
+  "examples": [
+    "flow-departure_from_6F.0",
+    "flow-arrival_to_6F.0",
+    "flow-arrival_to_6F.1",
+    "flow-departure_from_6F.1",
+    "flow-arrival_to_6F.2",
+    "flow-departure_from_6F.2",
+    "flow-arrival_to_6F.3",
+    "flow-departure_from_6F.3"
+  ],
+  "sumo_exit_code": 0,
+  "model_floor_spacing_metres": 4.2,
+  "model_decks": 6,
+  "connecting_ramps": 10,
+  "contract_and_dashboard_tests": 11,
+  "notes": "Departures model cars already on decks; arrival routes enter at ground level. Elevations come from SUMO FCD z coordinates."
+}

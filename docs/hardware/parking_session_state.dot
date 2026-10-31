@@ -1,0 +1,21 @@
+digraph ParkingSessionState {
+  graph [rankdir=LR, bgcolor="white", pad="0.2", nodesep="0.45", ranksep="0.55", fontname="Times New Roman", fontsize=13, labelloc="t", label="Parking session state transitions"];
+  node [shape=ellipse, style="solid", color="black", fontcolor="black", fontname="Times New Roman", fontsize=10, margin="0.12,0.08"];
+  edge [color="black", fontcolor="black", fontname="Times New Roman", fontsize=9, arrowsize=0.7];
+  available [label="AVAILABLE\nslot free; gate closed"];
+  entry_pending [label="ENTRY PENDING\nrequest persisted"];
+  parked [label="PARKED\nactive session; slot occupied"];
+  exit_pending [label="EXIT PENDING\nrequest persisted"];
+  reconcile [label="RECONCILE\nretry same idempotency key"];
+  error [label="REJECTED / UNKNOWN\nno gate action"];
+  available -> entry_pending [label="valid tag; entry request"];
+  entry_pending -> parked [label="server confirms slot + session"];
+  parked -> exit_pending [label="valid tag; exit request"];
+  exit_pending -> available [label="server confirms exit"];
+  entry_pending -> reconcile [label="timeout / restart"];
+  exit_pending -> reconcile [label="timeout / restart"];
+  reconcile -> parked [label="entry committed"];
+  reconcile -> available [label="exit committed"];
+  reconcile -> error [label="full / invalid / unknown"];
+  error -> available [label="confirmed status restored"];
+}

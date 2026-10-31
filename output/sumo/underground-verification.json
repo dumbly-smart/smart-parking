@@ -1,0 +1,26 @@
+{
+  "duration_seconds": 1500,
+  "deck_ids_seen": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6
+  ],
+  "min_elevation": -8.4,
+  "max_elevation": 12.6,
+  "negative_elevation_vehicle_samples": 172829,
+  "ramps_seen": [
+    "down_2_1",
+    "down_3_2",
+    "down_4_3",
+    "down_5_4",
+    "down_6_5",
+    "up_1_2",
+    "up_2_3",
+    "up_3_4",
+    "up_4_5",
+    "up_5_6"
+  ]
+}

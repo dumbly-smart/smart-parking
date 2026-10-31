@@ -4,7 +4,7 @@ import hashlib
 from collections import Counter
 
 from backend.app.config import ObjectiveWeights
-from backend.app.db import Database
+from backend.app.db import Database, VehicleFairnessHistory
 from backend.app.models.parking import (
     EntryResponse,
     ExitResponse,
@@ -31,7 +31,7 @@ class ParkingService:
         return self.database.enter_vehicle(
             request.rfid_uid,
             request.idempotency_key,
-            lambda slots: self._allocate(request, slots),
+            lambda slots, history: self._allocate(request, slots, history),
             request.source,
         )
 
@@ -45,6 +45,7 @@ class ParkingService:
         self,
         request: VehicleOperationRequest,
         slots: tuple[ParkingSlotRecord, ...],
+        fairness_history: VehicleFairnessHistory,
     ) -> AllocationResult:
         zone_totals = Counter(slot.zone for slot in slots)
         zone_occupied = Counter(slot.zone for slot in slots if slot.occupied)
@@ -55,7 +56,7 @@ class ParkingService:
                 distance=slot.walking_distance,
                 congestion=zone_occupied[slot.zone] / zone_totals[slot.zone],
                 waiting=0.0,
-                fairness=0.0,
+                fairness=self._personalized_fairness(slot.walking_distance, fairness_history),
             )
             for slot in slots
         )
@@ -71,3 +72,15 @@ class ParkingService:
                 iterations=30,
             )
         )
+
+    @staticmethod
+    def _personalized_fairness(
+        walking_distance: float, history: VehicleFairnessHistory
+    ) -> float:
+        peer_average = history.peer_average_walking_distance
+        if peer_average is None:
+            return 0.0
+        projected_average = (
+            history.walking_distance_total + walking_distance
+        ) / (history.completed_sessions + 1)
+        return min(1.0, abs(projected_average - peer_average))

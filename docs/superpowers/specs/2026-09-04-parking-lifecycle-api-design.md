@@ -7,8 +7,7 @@ clients can enter, safely retry an entry, exit, safely retry an exit, and read
 the current five-slot state. The same contracts support both hardware and
 simulated clients; runtime mode does not alter domain behavior.
 
-This milestone does not add camera occupancy updates, prediction, dashboard
-views, or firmware integration.
+This milestone does not add prediction, dashboard views, or firmware integration.
 
 ## Architecture
 

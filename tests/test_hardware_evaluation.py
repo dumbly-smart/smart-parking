@@ -17,12 +17,6 @@ def test_summarize_reports_only_observed_hardware_events() -> None:
         {"event": "api_transaction", "success": False, "operation": "exit", "latency_ms": 260},
         {"event": "gate_command", "operation": "entry", "latency_ms": 300},
         {"event": "free_heap", "free_heap_bytes": 64000},
-        {
-            "event": "camera_capture",
-            "status": "success",
-            "capture_latency_ms": 37,
-            "jpeg_bytes": 12000,
-        },
         {"event": "led_observation", "expected": True, "observed": False},
     ]
 
@@ -36,10 +30,7 @@ def test_summarize_reports_only_observed_hardware_events() -> None:
     assert metrics["exit_response_latency_ms"]["p95"] == 260
     assert metrics["servo_command_delay_ms"]["median"] == 300
     assert metrics["free_heap_bytes"]["mean"] == 64000
-    assert metrics["camera_capture_latency_ms"]["mean"] == 37
-    assert metrics["camera_capture_success_rate"]["rate"] == 1
     assert metrics["led_correctness_rate"]["rate"] == 0
-    assert metrics["camera_processing_latency_ms"] == {"status": "NOT TESTED", "count": 0}
 
 
 def test_wifi_recovery_uses_host_capture_timestamps() -> None:
@@ -72,5 +63,6 @@ def test_write_outputs_preserves_provenance_and_not_tested_status(tmp_path: Path
     report = json.loads(json_path.read_text(encoding="utf-8"))
 
     assert csv_path.read_text(encoding="utf-8").startswith("event,")
+    assert b"\r\n" not in csv_path.read_bytes()
     assert report["provenance"].startswith("captured hardware serial")
     assert report["metrics"]["power_current_ma"]["status"] == "NOT TESTED"

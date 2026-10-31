@@ -1,15 +1,16 @@
 from __future__ import annotations
 
 import json
+import math
 import sqlite3
-from collections.abc import Callable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TypeVar
 
 from backend.app.config import SlotConfig
-from backend.app.models.occupancy import OccupancyPersistenceResult, OccupancyTransition
 from backend.app.models.parking import (
     EntryResponse,
     ExitResponse,
@@ -44,6 +45,21 @@ CREATE TABLE IF NOT EXISTS parking_slots (
 );
 """
 
+FIRST_HOUR_RATE_PAISE = 5000
+ADDITIONAL_HOUR_RATE_PAISE = 4000
+GRACE_MINUTES = 10
+DAILY_CAP_PAISE = 40000
+
+
+def parking_fee_cents(entered_at: str, ended_at: str) -> tuple[int, int]:
+    entered = datetime.fromisoformat(entered_at.replace("Z", "+00:00"))
+    ended = datetime.fromisoformat(ended_at.replace("Z", "+00:00"))
+    seconds = max(0, int((ended - entered).total_seconds()))
+    billable_seconds = max(0, seconds - GRACE_MINUTES * 60)
+    hours = math.ceil(billable_seconds / 3600)
+    amount = 0 if hours == 0 else FIRST_HOUR_RATE_PAISE + (hours - 1) * ADDITIONAL_HOUR_RATE_PAISE
+    return seconds, min(amount, (seconds // 86400 + 1) * DAILY_CAP_PAISE)
+
 DEPENDENT_SCHEMA = """
 CREATE TABLE IF NOT EXISTS vehicles (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -61,21 +77,15 @@ CREATE TABLE IF NOT EXISTS parking_sessions (
     exit_slot_name TEXT,
     entered_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
     exited_at TEXT,
+    amount_paid_paise INTEGER,
     CHECK (exited_at IS NULL OR exited_at >= entered_at)
 );
 CREATE UNIQUE INDEX IF NOT EXISTS one_active_session_per_vehicle
     ON parking_sessions(vehicle_id) WHERE exited_at IS NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS one_active_session_per_slot
     ON parking_sessions(slot_id) WHERE exited_at IS NULL;
-
-CREATE TABLE IF NOT EXISTS occupancy_events (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    slot_id INTEGER NOT NULL REFERENCES parking_slots(id),
-    occupied INTEGER NOT NULL CHECK (occupied IN (0, 1)),
-    confidence REAL CHECK (confidence BETWEEN 0 AND 1),
-    source TEXT NOT NULL,
-    observed_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
-);
+CREATE INDEX IF NOT EXISTS completed_sessions_by_vehicle_slot
+    ON parking_sessions(vehicle_id, slot_id) WHERE exited_at IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS parking_events (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -147,6 +157,13 @@ CREATE TABLE IF NOT EXISTS prediction_demo_records (
 _TransactionResult = TypeVar("_TransactionResult")
 
 
+@dataclass(frozen=True)
+class VehicleFairnessHistory:
+    completed_sessions: int
+    walking_distance_total: float
+    peer_average_walking_distance: float | None
+
+
 class Database:
     def __init__(self, path: Path) -> None:
         self.path = path
@@ -192,11 +209,11 @@ class Database:
                 "exit_idempotency_key",
                 "entry_slot_name",
                 "exit_slot_name",
+                "amount_paid_paise",
             ):
                 if column not in session_columns:
-                    connection.execute(
-                        f"ALTER TABLE parking_sessions ADD COLUMN {column} TEXT"
-                    )
+                    kind = "INTEGER" if column == "amount_paid_paise" else "TEXT"
+                    connection.execute(f"ALTER TABLE parking_sessions ADD COLUMN {column} {kind}")
             connection.execute(
                 """
                 CREATE UNIQUE INDEX IF NOT EXISTS unique_exit_idempotency_key
@@ -402,104 +419,47 @@ class Database:
             ),
         )
 
-    def apply_occupancy_transitions(
-        self,
-        transitions: Sequence[OccupancyTransition],
-        observed_at: str,
-        expected_occupancy: Mapping[int, bool],
-    ) -> OccupancyPersistenceResult:
-        blocked: set[int] = set()
-        with self.connect() as connection:
-            connection.execute("BEGIN IMMEDIATE")
-            slots: dict[int, sqlite3.Row] = {}
-            for slot_id in expected_occupancy:
-                row = connection.execute(
-                    """
-                    SELECT s.occupied,
-                           EXISTS (
-                               SELECT 1 FROM parking_sessions AS ps
-                               WHERE ps.slot_id = s.id AND ps.exited_at IS NULL
-                           ) AS has_active_session
-                    FROM parking_slots AS s
-                    WHERE s.id = ?
-                    """,
-                    (slot_id,),
-                ).fetchone()
-                if row is None:
-                    raise LookupError(f"unknown parking slot ID {slot_id}")
-                slots[slot_id] = row
-            if any(
-                bool(slots[slot_id]["occupied"]) != expected
-                for slot_id, expected in expected_occupancy.items()
-            ):
-                return OccupancyPersistenceResult(
-                    snapshot_matched=False,
-                    blocked_slot_ids=frozenset(),
-                    occupied_slot_ids=frozenset(
-                        slot_id for slot_id, slot in slots.items() if bool(slot["occupied"])
-                    ),
-                )
-
-            for transition in transitions:
-                slot = slots.get(transition.slot_id)
-                if slot is None:
-                    raise ValueError(
-                        f"transition for unobserved parking slot ID {transition.slot_id}"
-                    )
-                if not transition.occupied and bool(slot["has_active_session"]):
-                    blocked.add(transition.slot_id)
-                    continue
-                current_occupied = bool(slot["occupied"])
-                if transition.occupied == current_occupied:
-                    continue
-                updated = connection.execute(
-                    """
-                    UPDATE parking_slots
-                    SET occupied = ?, updated_at = ?
-                    WHERE id = ? AND occupied = ?
-                    """,
-                    (
-                        transition.occupied,
-                        observed_at,
-                        transition.slot_id,
-                        current_occupied,
-                    ),
-                )
-                if updated.rowcount != 1:
-                    raise RuntimeError(
-                        f"parking slot {transition.slot_id} changed concurrently"
-                    )
-                connection.execute(
-                    """
-                    INSERT INTO occupancy_events
-                        (slot_id, occupied, confidence, source, observed_at)
-                    VALUES (?, ?, ?, 'camera_heuristic', ?)
-                    """,
-                    (
-                        transition.slot_id,
-                        transition.occupied,
-                        transition.confidence,
-                        observed_at,
-                    ),
-                )
-            occupied_slot_ids = frozenset(
-                int(row["id"])
-                for row in connection.execute(
-                    "SELECT id FROM parking_slots WHERE occupied = 1"
-                )
-                if int(row["id"]) in expected_occupancy
-            )
-        return OccupancyPersistenceResult(
-            snapshot_matched=True,
-            blocked_slot_ids=frozenset(blocked),
-            occupied_slot_ids=occupied_slot_ids,
+    def _vehicle_fairness_history(
+        self, connection: sqlite3.Connection, rfid_uid: str
+    ) -> VehicleFairnessHistory:
+        completed = connection.execute(
+            """
+            SELECT v.rfid_uid, COUNT(ps.id) AS session_count,
+                   SUM(slot.walking_distance) AS walking_distance_total
+            FROM parking_sessions AS ps
+            JOIN vehicles AS v ON v.id = ps.vehicle_id
+            JOIN parking_slots AS slot ON slot.id = ps.slot_id
+            WHERE ps.exited_at IS NOT NULL
+            GROUP BY v.id, v.rfid_uid
+            """
+        ).fetchall()
+        identity = rfid_uid.strip().upper()
+        own_count = 0
+        own_total = 0.0
+        peer_means: list[float] = []
+        for row in completed:
+            count = int(row["session_count"])
+            distance_total = float(row["walking_distance_total"] or 0.0)
+            vehicle_uid = str(row["rfid_uid"])
+            if vehicle_uid == identity:
+                own_count = count
+                own_total = distance_total
+            elif count:
+                peer_means.append(distance_total / count)
+        peer_average = math.fsum(peer_means) / len(peer_means) if peer_means else None
+        return VehicleFairnessHistory(
+            completed_sessions=own_count,
+            walking_distance_total=own_total,
+            peer_average_walking_distance=peer_average,
         )
 
     def enter_vehicle(
         self,
         rfid_uid: str,
         idempotency_key: str,
-        allocate: Callable[[tuple[ParkingSlotRecord, ...]], AllocationResult],
+        allocate: Callable[
+            [tuple[ParkingSlotRecord, ...], VehicleFairnessHistory], AllocationResult
+        ],
         source: str = "api",
     ) -> EntryResponse:
         with self.connect() as connection:
@@ -525,7 +485,9 @@ class Database:
                         "idempotency_conflict",
                         "idempotency key belongs to a different request",
                     )
-                return EntryResponse.model_validate(dict(replay))
+                result = dict(replay)
+                result.update(amount_due_paise=0, receipt_url=f"/receipt/{result['session_id']}")
+                return EntryResponse.model_validate(result)
 
             exit_key = connection.execute(
                 "SELECT 1 FROM parking_sessions WHERE exit_idempotency_key = ?",
@@ -563,7 +525,8 @@ class Database:
                 """
             ).fetchall()
             slots = tuple(ParkingSlotRecord.model_validate(dict(row)) for row in slot_rows)
-            result = allocate(slots)
+            fairness_history = self._vehicle_fairness_history(connection, rfid_uid)
+            result = allocate(slots, fairness_history)
             slot_name = next(slot.name for slot in slots if slot.id == result.chosen_slot_id)
 
             optimizer_cursor = connection.execute(
@@ -632,6 +595,8 @@ class Database:
                 optimizer=result.algorithm,
                 allocation_cost=result.best_cost,
                 entered_at=stored["entered_at"],
+                amount_due_paise=parking_fee_cents(stored["entered_at"], stored["entered_at"])[1],
+                receipt_url=f"/receipt/{session_id}",
             )
             connection.execute(
                 """INSERT INTO parking_events
@@ -660,7 +625,7 @@ class Database:
                 """
                 SELECT ps.id AS session_id, v.rfid_uid, ps.slot_id,
                        COALESCE(ps.exit_slot_name, s.name) AS slot_name,
-                       ps.exited_at
+                       ps.exited_at, ps.entered_at, ps.amount_paid_paise
                 FROM parking_sessions AS ps
                 JOIN vehicles AS v ON v.id = ps.vehicle_id
                 JOIN parking_slots AS s ON s.id = ps.slot_id
@@ -674,11 +639,15 @@ class Database:
                         "idempotency_conflict",
                         "idempotency key belongs to a different request",
                     )
-                return ExitResponse.model_validate(dict(replay))
+                result = dict(replay)
+                duration, amount = parking_fee_cents(result["entered_at"], result["exited_at"])
+                result.update(duration_seconds=duration, amount_paid_paise=result["amount_paid_paise"] or amount,
+                              receipt_url=f"/receipt/{result['session_id']}")
+                return ExitResponse.model_validate(result)
 
             active = connection.execute(
                 """
-                SELECT ps.id AS session_id, ps.slot_id, s.name AS slot_name
+                SELECT ps.id AS session_id, ps.slot_id, s.name AS slot_name, ps.entered_at
                 FROM parking_sessions AS ps
                 JOIN vehicles AS v ON v.id = ps.vehicle_id
                 JOIN parking_slots AS s ON s.id = ps.slot_id
@@ -695,16 +664,18 @@ class Database:
             exited_at = datetime.now(UTC).isoformat(timespec="milliseconds").replace(
                 "+00:00", "Z"
             )
+            duration, amount = parking_fee_cents(active["entered_at"], exited_at)
             connection.execute(
                 """
                 UPDATE parking_sessions
-                SET exited_at = ?, exit_idempotency_key = ?, exit_slot_name = ?
+                SET exited_at = ?, exit_idempotency_key = ?, exit_slot_name = ?, amount_paid_paise = ?
                 WHERE id = ? AND exited_at IS NULL
                 """,
                 (
                     exited_at,
                     idempotency_key,
                     active["slot_name"],
+                    amount,
                     active["session_id"],
                 ),
             )
@@ -720,6 +691,10 @@ class Database:
                 slot_id=active["slot_id"],
                 slot_name=active["slot_name"],
                 exited_at=exited_at,
+                entered_at=active["entered_at"],
+                duration_seconds=duration,
+                amount_paid_paise=amount,
+                receipt_url=f"/receipt/{active['session_id']}",
             )
             connection.execute(
                 """INSERT INTO parking_events
@@ -791,7 +766,7 @@ class Database:
             rows = connection.execute(
                 f"""
                 SELECT s.id, s.name, s.walking_distance, s.zone, s.occupied,
-                       s.updated_at, ps.id AS active_session_id, v.rfid_uid
+                       s.updated_at, ps.id AS active_session_id, v.rfid_uid, ps.entered_at
                 FROM parking_slots AS s
                 LEFT JOIN parking_sessions AS ps
                     ON ps.slot_id = s.id AND ps.exited_at IS NULL
@@ -801,9 +776,30 @@ class Database:
                 (*self._slot_order, len(self._slot_order)),
             ).fetchall()
         return ParkingStatusResponse(
-            slots=tuple(ParkingSlotStatus.model_validate(dict(row)) for row in rows),
+            slots=tuple(ParkingSlotStatus.model_validate({**dict(row), "amount_due_paise":
+                parking_fee_cents(row["entered_at"], datetime.now(UTC).isoformat(timespec="milliseconds").replace("+00:00", "Z"))[1]
+                if row["entered_at"] else None}) for row in rows),
             event_cursor=event_cursor,
         )
+
+    def parking_receipt(self, session_id: int) -> dict[str, object] | None:
+        with self.connect() as connection:
+            row = connection.execute(
+                """SELECT ps.id AS session_id, v.rfid_uid, ps.slot_id,
+                          COALESCE(ps.exit_slot_name, ps.entry_slot_name, s.name) AS slot_name,
+                          ps.entered_at, ps.exited_at, ps.amount_paid_paise
+                   FROM parking_sessions ps JOIN vehicles v ON v.id = ps.vehicle_id
+                   JOIN parking_slots s ON s.id = ps.slot_id WHERE ps.id = ?""",
+                (session_id,),
+            ).fetchone()
+        if row is None:
+            return None
+        result = dict(row)
+        end = result["exited_at"] or datetime.now(UTC).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+        duration, amount = parking_fee_cents(result["entered_at"], end)
+        result["duration_seconds"] = duration
+        result["amount_due_paise"] = result["amount_paid_paise"] if result["amount_paid_paise"] is not None else amount
+        return result
 
     def save_optimizer_results(self, results: Sequence[AllocationResult]) -> None:
         with self.connect() as connection:

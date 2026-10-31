@@ -6,7 +6,7 @@ namespace Pins {
 constexpr uint8_t RfidSck = 18;
 constexpr uint8_t RfidMiso = 19;
 constexpr uint8_t RfidMosi = 23;
-constexpr uint8_t RfidSs = 13;
+constexpr uint8_t RfidSs = 5;
 constexpr uint8_t RfidReset = 4;
 
 constexpr uint8_t I2cSda = 21;

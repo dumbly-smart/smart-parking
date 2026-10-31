@@ -1,173 +1,127 @@
 {
+  "actual_persisted_parking_sessions": 120,
   "by_occupancy": {
     "ACO:empty": {
-      "mean_cost": 0.3297262558333333,
-      "mean_runtime_ms": 1.4767213333333333,
-      "runs": 60
-    },
-    "ACO:heavy": {
-      "mean_cost": 0.39529704833333335,
-      "mean_runtime_ms": 1.03503155,
-      "runs": 60
+      "mean_cost": 0.175,
+      "mean_runtime_ms": 180.82431433333335,
+      "runs": 3
     },
     "ACO:light": {
-      "mean_cost": 0.3368879441666667,
-      "mean_runtime_ms": 1.3009510666666666,
-      "runs": 60
-    },
-    "ACO:moderate": {
-      "mean_cost": 0.3497884258333333,
-      "mean_runtime_ms": 1.1678119,
-      "runs": 60
-    },
-    "ACO:near_full": {
-      "mean_cost": 0.497196835,
-      "mean_runtime_ms": 0.93252525,
-      "runs": 60
+      "mean_cost": 0.1766718299041228,
+      "mean_runtime_ms": 160.59941855742298,
+      "runs": 357
     },
     "GA:empty": {
-      "mean_cost": 0.31801963333333333,
-      "mean_runtime_ms": 0.8167626833333334,
-      "runs": 60
-    },
-    "GA:heavy": {
-      "mean_cost": 0.39529704833333335,
-      "mean_runtime_ms": 0.8282198,
-      "runs": 60
+      "mean_cost": 0.175,
+      "mean_runtime_ms": 0.5905693333333334,
+      "runs": 3
     },
     "GA:light": {
-      "mean_cost": 0.33337320666666664,
-      "mean_runtime_ms": 0.8123201,
-      "runs": 60
+      "mean_cost": 0.17718997424438424,
+      "mean_runtime_ms": 0.5923364537815126,
+      "runs": 357
     },
-    "GA:moderate": {
-      "mean_cost": 0.34708109833333334,
-      "mean_runtime_ms": 0.8174771666666667,
-      "runs": 60
+    "NSGA-II:empty": {
+      "mean_cost": 0.15749999999999997,
+      "mean_runtime_ms": 825.948543,
+      "runs": 3
     },
-    "GA:near_full": {
-      "mean_cost": 0.497196835,
-      "mean_runtime_ms": 0.8867979166666666,
-      "runs": 60
+    "NSGA-II:light": {
+      "mean_cost": 0.17625168274592748,
+      "mean_runtime_ms": 758.0304096358543,
+      "runs": 357
     },
     "PSO:empty": {
-      "mean_cost": 0.38486607666666667,
-      "mean_runtime_ms": 1.2903404166666668,
-      "runs": 60
-    },
-    "PSO:heavy": {
-      "mean_cost": 0.4289086641666667,
-      "mean_runtime_ms": 1.1165441833333334,
-      "runs": 60
+      "mean_cost": 0.105,
+      "mean_runtime_ms": 0.917249,
+      "runs": 3
     },
     "PSO:light": {
-      "mean_cost": 0.40860127749999997,
-      "mean_runtime_ms": 1.2251685833333332,
-      "runs": 60
-    },
-    "PSO:moderate": {
-      "mean_cost": 0.41271702166666663,
-      "mean_runtime_ms": 1.17233115,
-      "runs": 60
-    },
-    "PSO:near_full": {
-      "mean_cost": 0.497196835,
-      "mean_runtime_ms": 1.1185918333333333,
-      "runs": 60
+      "mean_cost": 0.17806189185435,
+      "mean_runtime_ms": 0.8987883417366946,
+      "runs": 357
     },
     "exhaustive_optimum:empty": {
-      "mean_cost": 0.31801963333333333,
-      "mean_runtime_ms": 0.0236644,
-      "runs": 60
-    },
-    "exhaustive_optimum:heavy": {
-      "mean_cost": 0.39529704833333335,
-      "mean_runtime_ms": 0.0109234,
-      "runs": 60
+      "mean_cost": 0.06999999999999999,
+      "mean_runtime_ms": 5.429298333333334,
+      "runs": 3
     },
     "exhaustive_optimum:light": {
-      "mean_cost": 0.33337320666666664,
-      "mean_runtime_ms": 0.019154983333333334,
-      "runs": 60
-    },
-    "exhaustive_optimum:moderate": {
-      "mean_cost": 0.34708109833333334,
-      "mean_runtime_ms": 0.015361833333333333,
-      "runs": 60
-    },
-    "exhaustive_optimum:near_full": {
-      "mean_cost": 0.497196835,
-      "mean_runtime_ms": 0.006854183333333333,
-      "runs": 60
+      "mean_cost": 0.17503471977026103,
+      "mean_runtime_ms": 5.402419173669468,
+      "runs": 357
     },
     "first_available:empty": {
-      "mean_cost": 0.5081572233333334,
-      "mean_runtime_ms": 0.00041388333333333336,
-      "runs": 60
-    },
-    "first_available:heavy": {
-      "mean_cost": 0.5023136983333333,
-      "mean_runtime_ms": 0.0003409,
-      "runs": 60
+      "mean_cost": 0.06999999999999999,
+      "mean_runtime_ms": 0.000571,
+      "runs": 3
     },
     "first_available:light": {
-      "mean_cost": 0.481548935,
-      "mean_runtime_ms": 0.0003318833333333333,
-      "runs": 60
-    },
-    "first_available:moderate": {
-      "mean_cost": 0.44640668083333335,
-      "mean_runtime_ms": 0.00033066666666666666,
-      "runs": 60
-    },
-    "first_available:near_full": {
-      "mean_cost": 0.497196835,
-      "mean_runtime_ms": 0.0003497,
-      "runs": 60
+      "mean_cost": 0.1855252100840336,
+      "mean_runtime_ms": 0.0007889635854341736,
+      "runs": 357
     }
   },
-  "full_capacity_rejections": 300,
-  "interpretation": "Simulation-based single-slot objective and software runtime; not physical throughput or measured waiting time.",
+  "candidate_capacity": 2376,
+  "full_capacity_rejections": 0,
+  "interpretation": "Measured optimizer outcomes on parking allocation states observed during an executed SUMO/TraCI run. This is simulation evidence, not a physical facility trial; waiting is zero because live allocation does not measure queue delay.",
   "iterations": 30,
-  "occupancy_levels": {
-    "empty": 20,
-    "full": 20,
-    "heavy": 20,
-    "light": 20,
-    "moderate": 20,
-    "near_full": 20
+  "nsga2_parameters": {
+    "crossover_probability": 0.9,
+    "generations": 60,
+    "mutation_probability": 0.12,
+    "population_size": 48
   },
-  "random_seed_formula": "20261015 + scenario_index * 101 + repetition",
+  "observed_simulation_end": 367.25,
+  "observed_simulation_start": 0.5,
+  "occupancy_levels": {
+    "empty": 1,
+    "light": 119
+  },
+  "optimizer_seed_strategy": "observed_allocation_seed + repeat_index",
   "repeated_seeds_per_scenario": 3,
   "scenario_count": 120,
+  "scenario_evidence_file": "sumo_observed_scenarios.jsonl",
+  "source": "executed_sumo_parking_allocations",
   "success_failure_counts": {
     "ACO": {
-      "full_capacity": 60,
+      "full_capacity": 0,
       "invalid": 0,
-      "success": 300
+      "success": 360
     },
     "GA": {
-      "full_capacity": 60,
+      "full_capacity": 0,
       "invalid": 0,
-      "success": 300
+      "success": 360
+    },
+    "NSGA-II": {
+      "full_capacity": 0,
+      "invalid": 0,
+      "success": 360
     },
     "PSO": {
-      "full_capacity": 60,
+      "full_capacity": 0,
       "invalid": 0,
-      "success": 300
+      "success": 360
     },
     "exhaustive_optimum": {
-      "full_capacity": 60,
+      "full_capacity": 0,
       "invalid": 0,
-      "success": 300
+      "success": 360
     },
     "first_available": {
-      "full_capacity": 60,
+      "full_capacity": 0,
       "invalid": 0,
-      "success": 300
+      "success": 360
     }
   },
-  "successful_scenario_repetitions": 300,
+  "successful_scenario_repetitions": 360,
+  "sumo_config_sha256": "9b5959763f834ac3043b3bb7b73022b701f24471fc1281d7d8e8927cb6625b75",
+  "sumo_network_sha256": "97082f72f2f254c049bb26cf200e1bd2cfb951e60febfbcab8460df0599c546b",
+  "sumo_routes_sha256": "25a75b1217018bd9cb1ee9520808424b94b23035d496dc603d5bc5b0b5a13b0c",
+  "sumo_seed": 20261031,
+  "sumo_step_length_seconds": 0.25,
+  "sumo_version": "Eclipse SUMO sumo 1.28.0",
   "weights": {
     "congestion": 0.3,
     "distance": 0.35,

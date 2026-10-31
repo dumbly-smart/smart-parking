@@ -1,0 +1,62 @@
+{
+  "inference_environment": "CPU/server process; no microcontroller inference was measured",
+  "prediction_api_checks": [
+    {
+      "model": "lstm",
+      "occupancy_ratio": 0.13092587888240814,
+      "target_at": "2026-08-15T00:00:00Z"
+    },
+    {
+      "model": "gru",
+      "occupancy_ratio": 0.1364930123090744,
+      "target_at": "2026-08-15T00:00:00Z"
+    },
+    {
+      "model": "transformer",
+      "occupancy_ratio": 0.0950712040066719,
+      "target_at": "2026-08-15T00:00:00Z"
+    }
+  ],
+  "results": [
+    {
+      "inference_latency_ms": 1.451178451178451e-05,
+      "mae": 0.12087542087542087,
+      "manifest_path": "N/A",
+      "model": "persistence_baseline",
+      "model_size_bytes": "N/A",
+      "mse": 0.02861952861952862,
+      "rmse": 0.1691730729741841
+    },
+    {
+      "inference_latency_ms": 0.24590969865319864,
+      "mae": 0.10406229091864644,
+      "manifest_path": "artifacts/prediction/lstm-51ba3a4904da-20260908.json",
+      "model": "lstm",
+      "model_size_bytes": 60481,
+      "mse": 0.0168182121121455,
+      "rmse": 0.12968504968632855
+    },
+    {
+      "inference_latency_ms": 0.22378301346801346,
+      "mae": 0.09805470040375336,
+      "manifest_path": "artifacts/prediction/gru-51ba3a4904da-20260908.json",
+      "model": "gru",
+      "model_size_bytes": 52615,
+      "mse": 0.013891442005570876,
+      "rmse": 0.11786196165672314
+    },
+    {
+      "inference_latency_ms": 0.23245132154882156,
+      "mae": 0.10917254401377155,
+      "manifest_path": "artifacts/prediction/transformer-51ba3a4904da-20260908.json",
+      "model": "transformer",
+      "model_size_bytes": 110684,
+      "mse": 0.01809847655725238,
+      "rmse": 0.13453057852121345
+    }
+  ],
+  "split_id": "51ba3a4904da8444d180c753b28df27c62ce9907061736aad55182687668d5a6",
+  "test_examples": 594,
+  "train_examples": 2810,
+  "validation_examples": 592
+}

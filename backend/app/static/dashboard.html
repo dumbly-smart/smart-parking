@@ -1,26 +1,111 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="theme-color" content="#101a27">
-  <title>Parkflow · Live parking operations</title>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0b1820">
+  <title>Parkflow · P2 multi-floor garage</title>
   <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="/static/dashboard.css?v=2">
+  <link rel="stylesheet" href="/static/dashboard.css?v=4">
+  <link rel="stylesheet" href="/static/garage-dashboard.css?v=5">
   <script type="importmap">{"imports":{"three":"/static/three.module.js"}}</script>
   <script id="dashboard-bootstrap" type="application/json">__DASHBOARD_BOOTSTRAP__</script>
-  <script src="/static/dashboard.js?v=7" defer></script>
+  <script src="/static/dashboard.js?v=42" defer></script>
 </head>
 <body>
 <div class="app-shell">
-  <aside class="rail" aria-label="Application navigation"><a class="brand-mark" href="/dashboard" aria-label="Parkflow dashboard">P<span>.</span></a><div class="rail-line"></div><a class="rail-icon active" href="#parking-scene" aria-label="Live overview">▦</a><a class="rail-icon" href="#slots-heading" aria-label="Parking spaces">⌗</a><a class="rail-icon" href="#insights-heading" aria-label="Forecasts">◷</a><span class="rail-spacer"></span><span class="rail-bottom">PF<br>01</span></aside>
-  <main class="dashboard-shell">
-    <header class="masthead"><div><p class="eyebrow">OPERATIONS / LIVE OVERVIEW</p><h1>Parking, in motion<span class="title-dot">.</span></h1><p class="subheading">A live view of every space, every arrival, and every departure.</p></div><div class="header-right"><span class="live-badge"><span class="live-dot"></span> LIVE SYSTEM</span><span id="refresh-status" class="refresh-status" role="status">Connecting…</span></div></header>
+  <aside class="rail" aria-label="Application navigation">
+    <a class="brand-mark" href="/dashboard" aria-label="Parkflow dashboard">P<span>.</span></a>
+    <div class="rail-line"></div>
+    <a class="rail-icon active" href="#garage-heading" aria-label="Garage level model">⌖</a>
+    <a class="rail-icon" href="#slots-heading" aria-label="Parking spaces">▤</a>
+    <a class="rail-icon" href="#insights-heading" aria-label="Forecasts">◷</a>
+    <span class="rail-spacer"></span><span class="rail-bottom">CHN<br>01</span>
+  </aside>
+  <main class="dashboard-shell garage-dashboard">
+    <header class="masthead">
+      <div>
+        <p class="eyebrow">PARKFLOW <span class="crumb-slash">/</span> FIVE-LIVE-SPACE SYSTEM</p>
+        <h1>P2 parking garage<span class="title-dot">.</span></h1>
+        <p class="subheading">Two basements · four above-ground decks · connected ramps · 2,376 tracked bays across all floors</p>
+      </div>
+      <div class="header-right">
+        <span id="sumo-badge" class="live-badge sumo-badge state-stopped"><span class="live-dot"></span><span id="sumo-state-label">SUMO STOPPED</span></span>
+        <span id="refresh-status" class="refresh-status" role="status">Connecting…</span>
+      </div>
+    </header>
+
     <p id="dashboard-error" class="dashboard-error" role="alert" hidden></p>
-    <section class="hero-grid" aria-label="Live parking lot and simulation controls">
-      <div class="scene-card"><div class="scene-topbar"><div><span class="scene-overline">SITE VISUALIZATION</span><h2>Lot overview <span class="heading-arrow">↗</span></h2></div><span class="scene-live"><span class="live-dot"></span> REAL TIME</span></div><div id="parking-scene" class="parking-scene" role="img" aria-label="Interactive 3D parking lot showing live occupied spaces"><div id="scene-loading" class="scene-loading">Building parking lot…</div><div class="scene-watermark">PARKFLOW <span>01 / LIVE</span></div><div class="scene-hint">DRAG TO ROTATE <span>·</span> SCROLL TO ZOOM</div></div><div class="scene-footer"><div class="legend"><span><i class="legend-dot free"></i> Available</span><span><i class="legend-dot busy"></i> Occupied</span><span><i class="legend-dot moving"></i> In motion</span></div><button id="reset-view" class="text-button" type="button">Reset view ↗</button></div></div>
-      <div class="control-stack"><section class="control-card" aria-labelledby="simulate-heading"><div class="card-topline"><span class="section-index">01 / SIMULATION</span><span class="tiny-icon">↗</span></div><h2 id="simulate-heading">Move a vehicle</h2><p class="card-description">Simulate a gate event and watch the car travel to its assigned space.</p><label for="vehicle-uid" class="input-label">VEHICLE RFID / ID</label><input id="vehicle-uid" name="vehicle-uid" type="text" maxlength="128" placeholder="e.g. CAR-001" autocomplete="off"><div class="action-grid"><button id="entry-button" class="action-button primary" type="button"><span class="action-icon">↘</span><span>Simulate entry<small>Allocate & park</small></span><span class="action-chevron">↗</span></button><button id="exit-button" class="action-button secondary" type="button"><span class="action-icon">↗</span><span>Simulate exit<small>Leave the lot</small></span><span class="action-chevron">↗</span></button></div><p id="simulation-message" class="simulation-message" role="status" aria-live="polite">Enter a vehicle ID to begin.</p></section><section class="occupancy-card" aria-label="Occupancy summary"><div class="card-topline"><span class="section-index">02 / CAPACITY</span><span class="tiny-icon">◉</span></div><div class="occupancy-main"><strong id="occupancy-count">—</strong><span><b id="occupancy-total">/ —</b><br>spaces occupied</span></div><div class="progress-track"><div id="occupancy-progress" class="progress-fill"></div></div><div class="capacity-bottom"><span><i class="legend-dot free"></i><b id="available-count">—</b> available now</span><span id="occupancy-rate">—%</span></div></section></div>
+
+    <section class="garage-hero" aria-labelledby="garage-heading">
+      <div class="garage-map-card">
+        <div class="garage-map-header">
+          <div><p class="eyebrow">HANEDA P2 REFERENCE <span class="map-coordinates">MULTI-FLOOR EMULATION</span></p><h2 id="garage-heading">Explore the city & garage</h2></div>
+          <div class="map-tools"><button id="city-view" class="icon-action" type="button" aria-pressed="true" title="Explore the surrounding city district">▦ <span>City view</span></button><button id="inspect-vehicle" class="icon-action" type="button" title="Follow a SUMO car and inspect its moving parts" disabled>◉ <span>Inspect car</span></button><button id="focus-live-bays" class="icon-action" type="button" title="Focus the five live spaces on 2F">⌖ <span>Live bays · 2F</span></button><button id="access-view" class="icon-action" type="button" title="Inspect the entrance and exit gates">⇄ <span>Entry / exit view</span></button><button id="reset-view" class="icon-action" type="button" title="Show all six garage floors">⟲ <span>Building view</span></button></div>
+        </div>
+        <div class="floor-navigation">
+          <div id="floor-selector" class="floor-selector" role="group" aria-label="Choose garage floor">
+            <button type="button" data-floor="all" class="active" aria-pressed="true">All floors</button>
+            <button type="button" data-floor="1" aria-pressed="false">B2 <small data-floor-count="1">0</small></button>
+            <button type="button" data-floor="2" aria-pressed="false">B1 <small data-floor-count="2">0</small></button>
+            <button type="button" data-floor="3" aria-pressed="false">G <small data-floor-count="3">0</small></button>
+            <button type="button" data-floor="4" aria-pressed="false">1F <small data-floor-count="4">0</small></button>
+            <button type="button" data-floor="5" aria-pressed="false">2F <span class="floor-live-dot" title="Live sensor zone">●</span> <small data-floor-count="5">0</small></button>
+            <button type="button" data-floor="6" aria-pressed="false">3F / Roof <small data-floor-count="6">0</small></button>
+          </div>
+          <label class="view-mode-label">View <select id="garage-view-mode"><option value="exploded">Exploded</option><option value="assembled" selected>Assembled</option></select></label>
+        </div>
+        <div class="model-detail-controls">
+          <label class="view-mode-label">Lighting <select id="scene-lighting"><option value="day">Daylight</option><option value="golden">Golden hour</option><option value="evening">Evening</option></select></label>
+          <label class="mechanical-switch"><input id="mechanical-animations" type="checkbox" checked> Mechanical animations</label>
+          <label class="mechanical-switch"><input id="underground-cutaway" type="checkbox" checked> Underground cutaway</label>
+          <label class="mechanical-switch"><input id="soft-shadows" type="checkbox" checked> Soft shadows</label>
+          <label class="view-mode-label">Quality <select id="scene-quality"><option value="auto">Auto (smooth)</option><option value="high">High detail</option><option value="balanced">Balanced</option></select></label>
+          <label class="mechanical-switch"><input id="city-scenery" type="checkbox" checked> City scenery</label>
+          <span class="model-detail-note">Wheels · steering · lights · doors · gates</span>
+        </div>
+        <div id="garage-scene" class="garage-scene multi-floor-scene" role="img" aria-label="Interactive six-floor 3D parking garage with connecting ramps, five live spaces on 2F, and SUMO traffic">
+          <button id="city-garage-marker" class="city-garage-marker" type="button" title="Zoom to the multi-level garage"><b>P</b><span>P2 GARAGE<small>B2 → 3F · 5 live bays</small></span></button>
+          <div id="parking-navigation" class="parking-navigation" hidden><div class="navigation-actions"><strong>Assigned bay navigation</strong><button id="parking-navigation-close" type="button" aria-label="Close driving view">×</button></div><canvas id="parking-minimap" width="280" height="160" aria-label="Live car position, route and assigned parking bay"></canvas><p id="parking-destination" aria-live="polite"></p><button id="parking-camera-toggle" type="button">Overhead view</button></div><div id="scene-loading" class="scene-loading">Building city district…</div>
+          <div class="map-scale"><span></span><b id="floor-view-status">ALL SIX FLOORS · ASSEMBLED BUILDING</b></div>
+          <div id="floor-traffic-summary" class="floor-traffic-summary" aria-live="polite">0 moving · 0 on ramps</div>
+          <div id="vehicle-inspection" class="vehicle-inspection" hidden><strong>FOLLOWING SUMO VEHICLE</strong><span id="vehicle-inspection-text"></span><small>Inspect car selects the next vehicle. Building view leaves inspection.</small></div>
+          <div class="scene-hint">DRAG TO ORBIT <i>·</i> SCROLL TO ZOOM <i>·</i> SHIFT + DRAG TO PAN</div>
+        </div>
+        <div class="map-footer"><span><i class="map-key street"></i>Reference bays</span><span><i class="map-key free-space"></i>Five live spaces</span><span><i class="map-key traffic"></i>SUMO traffic</span><span><i class="map-key mall"></i>Ramps and service cores</span><span class="map-attribution">Official layout: <a href="https://www.aeif.or.jp/haneda/pdf/parking/p2/floor_p2.pdf#page=5" target="_blank" rel="noreferrer">Haneda P2 · 5F map</a></span></div>
+      </div>
+
+      <aside class="ops-sidebar" aria-label="Traffic simulation and parking status">
+        <section class="sumo-control-card" aria-labelledby="sumo-heading">
+          <div class="section-heading"><div><p class="eyebrow">TRAFFIC ENGINE <span class="engine-pill">SUMO / TraCI</span></p><h2 id="sumo-heading">Simulation</h2></div><span class="engine-sigil">↗</span></div>
+          <p id="sumo-message" class="sumo-message" role="status" aria-live="polite">SUMO has not started.</p>
+          <div class="sumo-kpis"><div><strong id="sumo-vehicles">—</strong><span>vehicles</span></div><div><strong id="sumo-speed">—</strong><span>mean km/h</span></div><div><strong id="sumo-time">00:00</strong><span>sim time</span></div></div>
+          <div class="sumo-actions"><button id="sumo-start" class="sumo-button primary" type="button">Start simulation</button><button id="sumo-stop" class="sumo-button reset" type="button" disabled>Stop simulation</button><button id="sumo-pause" class="sumo-button" type="button" disabled>Pause</button><button id="sumo-resume" class="sumo-button" type="button" disabled>Resume</button><button id="sumo-reset" class="sumo-button reset" type="button">Reset</button></div>
+        </section>
+
+        <section class="occupancy-card" aria-label="Modeled garage capacity">
+          <div class="card-topline"><span class="section-index">FULL GARAGE MODEL</span><span class="parking-dot"></span></div>
+          <div class="occupancy-main"><strong id="occupancy-count">—</strong><span><b id="occupancy-total">/ —</b><br>spaces occupied</span></div>
+          <div class="progress-track"><div id="occupancy-progress" class="progress-fill"></div></div>
+          <div class="capacity-bottom"><span><i class="legend-dot free"></i><b id="available-count">—</b> available now</span><span id="occupancy-rate">—%</span></div>
+        </section>
+
+        <section class="site-note-card"><span class="note-icon">i</span><p>Two basement and four above-ground emulated decks use the <a href="https://www.aeif.or.jp/haneda/pdf/parking/p2/floor_p2.pdf" target="_blank" rel="noreferrer">Haneda P2 floor guides</a>, with 396 modeled bays per deck. The <a href="https://www.aeif.or.jp/haneda/parking/p2/" target="_blank" rel="noreferrer">real facility reports 2,315 spaces</a>. Every modeled bay has a tracked occupancy record. The basement placement and surrounding city are fictional design emulations. City roads and signals run in SUMO. SUMO arrivals enter tracked parking sessions, dwell, then depart back into traffic. Exploded view increases floor separation for inspection.</p></section>
+      </aside>
     </section>
-    <section class="lower-grid" aria-label="Spaces and live insights"><section class="spaces-panel" aria-labelledby="slots-heading"><div class="panel-heading"><div><p class="eyebrow">THE GROUND TRUTH</p><h2 id="slots-heading">Parking spaces <span id="space-count" class="count-chip">—</span></h2></div><span class="section-note">SELECT A SPACE TO INSPECT</span></div><div id="slot-grid" class="slot-grid" aria-live="polite"></div><div id="selected-space" class="selected-space">Select a space in the model or list to view its details.</div></section><section class="insights-panel" aria-labelledby="insights-heading"><div class="panel-heading"><div><p class="eyebrow">LOOKING AHEAD</p><h2 id="insights-heading">Live insights</h2></div><span class="insight-orbit">◉</span></div><div class="forecast-feature"><span class="forecast-label">PREDICTED OCCUPANCY <span>↗</span></span><div class="forecast-number" id="forecast-occupancy">—</div><div class="forecast-bar"><span id="forecast-progress"></span></div><p>At <span id="forecast-target">—</span></p></div><dl class="insight-list"><div><dt>Forecast model</dt><dd id="forecast-model">—</dd></div><div><dt>Runtime state</dt><dd id="forecast-fallback">—</dd></div><div><dt>Allocation engine</dt><dd id="selected-optimizer">—</dd></div><div><dt>Selected predictor</dt><dd id="selected-predictor">—</dd></div></dl></section></section>
-    <section class="benchmark-panel" aria-label="Model benchmarks"><div class="panel-heading"><div><p class="eyebrow">SYSTEM PERFORMANCE</p><h2>Model benchmarks</h2></div><span class="section-note">LATEST RUNS</span></div><div class="comparison-grid"><div><h3>Optimizer comparison</h3><div class="table-wrap"><table><thead><tr><th>Algorithm</th><th>Slot</th><th>Cost</th><th>Iterations</th><th>Runtime</th></tr></thead><tbody id="optimizer-runs"></tbody></table></div><p id="optimizer-empty" class="empty-state" hidden>No optimizer runs yet.</p></div><div><h3>Predictor comparison</h3><div class="table-wrap"><table><thead><tr><th>Model</th><th>MAE</th><th>MSE</th><th>RMSE</th><th>Latency</th></tr></thead><tbody id="predictor-runs"></tbody></table></div><p id="predictor-empty" class="empty-state" hidden>No trained predictor benchmarks yet.</p></div></div></section>
+
+    <section class="parking-actions-card" aria-labelledby="parking-action-heading">
+      <div class="parking-action-copy"><p class="eyebrow">PARKING LIFECYCLE</p><h2 id="parking-action-heading">RFID & simulated arrivals</h2><p>Scan a card with a connected reader or simulate a vehicle. Both update the same live parking records, with city traffic running or stopped.</p></div>
+      <div class="parking-action-form"><div class="space-filters"><label>Input mode<select id="vehicle-input-mode"><option value="simulation">Simulated vehicle</option><option value="rfid">RFID / keyboard reader</option></select></label><button id="scan-card" class="sumo-button" type="button">Scan card · auto entry / exit</button><button id="generate-vehicle" class="sumo-button" type="button">Generate vehicle ID</button></div><label for="vehicle-uid" class="input-label">VEHICLE RFID / ID</label><input id="vehicle-uid" name="vehicle-uid" type="text" maxlength="128" placeholder="e.g. CAR-001" autocomplete="off"><div class="action-grid"><button id="entry-button" class="action-button primary" type="button"><span class="action-icon">↘</span><span>Park vehicle<small>Allocate a free bay</small></span><span class="action-chevron">↗</span></button><button id="exit-button" class="action-button secondary" type="button"><span class="action-icon">↗</span><span>Release vehicle<small>Close the parking session</small></span><span class="action-chevron">↗</span></button></div><p id="simulation-message" class="simulation-message" role="status" aria-live="polite">Enter a vehicle ID to begin.</p></div>
+    </section>
+
+    <section class="lower-grid" aria-label="Parking spaces and live insights">
+      <section class="spaces-panel" aria-labelledby="slots-heading"><div class="panel-heading"><div><p class="eyebrow">LIVE OCCUPANCY · ALL SIX FLOORS</p><h2 id="slots-heading">Parking spaces <span id="space-count" class="count-chip">—</span></h2></div><span class="section-note">ALL BAYS LIVE TRACKED</span></div><div class="space-filters"><label>Floor <select id="space-floor-filter"><option value="all">All floors</option><option value="1">B2</option><option value="2">B1</option><option value="3">Ground</option><option value="4">1F</option><option value="5">2F</option><option value="6">3F / Roof</option></select></label><label>Find a bay <input id="space-search" type="search" placeholder="Bay ID or zone"></label><span id="space-summary"></span></div><div id="slot-grid" class="slot-grid" aria-live="polite"></div><div id="selected-space" class="selected-space">Select a bay to inspect its status.</div></section>
+      <section class="insights-panel" aria-labelledby="insights-heading"><div class="panel-heading"><div><p class="eyebrow">LOOKING AHEAD</p><h2 id="insights-heading">Parking outlook</h2></div><span class="insight-orbit">◉</span></div><div class="forecast-feature"><span class="forecast-label">PREDICTED OCCUPANCY <span>↗</span></span><div class="forecast-number" id="forecast-occupancy">—</div><div class="forecast-bar"><span id="forecast-progress"></span></div><p>At <span id="forecast-target">—</span></p></div><dl class="insight-list"><div><dt>Forecast model</dt><dd id="forecast-model">—</dd></div><div><dt>Runtime state</dt><dd id="forecast-fallback">—</dd></div><div><dt>Allocation engine</dt><dd id="selected-optimizer">—</dd></div><div><dt>Selected predictor</dt><dd id="selected-predictor">—</dd></div></dl></section>
+    </section>
+
+    <section class="benchmark-panel" aria-label="Model benchmarks"><div class="panel-heading"><div><p class="eyebrow">SYSTEM PERFORMANCE</p><h2>Model benchmarks</h2></div><span class="section-note">OPTIMIZER + PREDICTOR</span></div><p class="benchmark-note">Live allocator: NSGA-II · population 48 · 60 generations · crossover 0.90 · mutation 0.12. It retains diverse non-dominated bay choices across distance, congestion, waiting, and fairness, then selects the best weighted compromise. Tune these fields per run through <code>/api/allocation/run</code>.</p><div class="comparison-grid"><div><h3>Optimizer comparison</h3><button id="run-optimizer-comparison" class="sumo-button" type="button">Compare all optimizers</button><p id="optimizer-comparison-status" class="benchmark-note">Compare live bay assignment with GA, PSO, ACO, and NSGA-II.</p><div class="table-wrap"><table><thead><tr><th>Algorithm</th><th>Slot</th><th>Cost</th><th>Iterations</th><th>Runtime</th></tr></thead><tbody id="optimizer-runs"></tbody></table></div><p id="optimizer-empty" class="empty-state" hidden>No optimizer runs yet.</p></div><div><div class="comparison-subheading"><h3>Predictor comparison</h3><span id="predictor-source" class="comparison-source">ACTUAL TEST RESULTS</span></div><div class="table-wrap"><table><thead><tr><th>Model</th><th>MAE</th><th>MSE</th><th>RMSE</th><th>Server latency</th></tr></thead><tbody id="predictor-runs">__PREDICTOR_ROWS__</tbody></table></div><p id="predictor-empty" class="empty-state" hidden>No predictor comparison results available.</p><p id="predictor-provenance" class="benchmark-note">Actual held-out test metrics on the project's synthetic dataset. Lower is better for every metric.</p></div></div></section>
+    <footer class="page-footer"><span>PARKFLOW · FIVE LIVE BAYS</span><span>Full-floor source: <a href="https://www.aeif.or.jp/haneda/pdf/parking/p2/floor_p2.pdf#page=5" target="_blank" rel="noreferrer">Haneda P2 · 5F · official floor-map PDF</a></span></footer>
   </main>
 </div>
 </body>

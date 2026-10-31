@@ -2,177 +2,100 @@
 
 ## Purpose
 
-This repository will implement a smart parking system whose initial physical
-prototype has five slots. Slot cardinality is configuration-driven in the
-backend so other deployments can operate on any non-empty slot set. The system
-combines ESP32 hardware, camera-based occupancy detection, predictive models,
-and multi-objective slot allocation, and must run end to end without physical
-hardware so development and demonstrations remain repeatable.
-
-The detailed product and implementation requirements are in [`2026-09-03-smart-parking-design.md`](2026-09-03-smart-parking-design.md). This document is the concise architectural reference.
+This repository implements a five-space smart parking prototype. The operating workflow uses an ESP32 controller, RC522 RFID reader, SSD1306 OLED, five indicator LEDs, a supervised tabletop servo, FastAPI, SQLite, prediction models, allocation algorithms, and a browser dashboard. Occupancy is the state of confirmed RFID vehicle sessions.
 
 ## System Context
 
 ```mermaid
 flowchart LR
-    Camera[ESP32-CAM] -->|MJPEG/JPEG over Wi-Fi| API[FastAPI backend]
-    Controller[ESP32 DevKit] -->|RFID entry and status requests| API
-    API -->|slot assignment and gate command| Controller
+    Tag[RFID test tag] --> Controller[ESP32 DevKit]
+    Controller -->|Entry, exit, status| API[FastAPI backend]
+    API -->|Authorization and slot state| Controller
     API <--> DB[(SQLite)]
-    API --> Vision[Occupancy service]
     API --> Prediction[Prediction service]
     API --> Allocation[Allocation service]
-    Browser[Dashboard] <--> API
+    Browser[3D dashboard] <--> API
+    Controller --> Outputs[OLED, five LEDs, tabletop servo]
 ```
 
-The laptop/server is the system coordinator. The embedded devices collect input and actuate physical outputs, while all compute-heavy work and persistent state remain on the server.
+The local computer coordinates requests, persistence, prediction, allocation, and dashboard state. The controller performs tag reads, validates API responses, updates indicators, and actuates the supervised demonstration gate only after confirmed authorization.
 
 ## Component Boundaries
 
-### ESP32-CAM
+### ESP32 controller
 
-- Connects to configured Wi-Fi.
-- Provides `GET /health` and a bounded `GET /capture` JPEG snapshot endpoint.
-- Reports health without performing occupancy inference.
-- Uses a fixed camera position so configured slot regions remain stable.
-
-### ESP32 DevKit controller
-
-- Reads RC522 RFID UIDs and submits vehicle entry requests.
-- Displays the returned assignment on an OLED.
-- Drives five slot LEDs and the SG90 entry-gate servo.
-- Keeps the gate closed when the response is missing or invalid.
-- Retries transient network failures with capped backoff.
+- Reads and normalizes RFID UIDs without logging them.
+- Sends idempotent entry and exit requests.
+- Updates the OLED and five slot LEDs from confirmed server status.
+- Opens the tabletop servo only after a valid committed response; failure leaves it closed.
 
 ### FastAPI backend
 
-- Owns the public HTTP API and dashboard.
-- Coordinates vehicle sessions, occupancy, prediction, and allocation.
-- Enforces invariants such as never assigning an occupied slot.
-- Stores domain state, observations, and experiment results in SQLite.
-
-### Occupancy service
-
-- Crops one configurable Region of Interest per configured slot from each frame.
-- Uses a deterministic edge-density heuristic; no real labeled occupancy corpus
-  is currently available for a trained classifier.
-- Applies confidence thresholds and temporal smoothing.
-- Persists only accepted state changes; a single failed or uncertain frame does not flip state.
+- Owns the vehicle lifecycle, parking status, prediction, allocation, and dashboard APIs.
+- Keeps entry, slot assignment, and exit updates atomic in SQLite.
+- Derives slot occupancy from active parking sessions.
 
 ### Prediction service
 
-- Builds identical time-series splits and features for all models.
-- Compares LSTM, GRU, and temporal Transformer models using MAE, RMSE, MSE, and inference latency.
-- Validates artifact hash, manifest, split, feature, geometry, and scaler
-  compatibility before loading a selected artifact.
-- Uses a deterministic baseline when no compatible trained artifact exists.
+- Builds shared chronological sequences for LSTM, GRU, and temporal Transformer comparisons.
+- Validates model artifact hashes and uses a deterministic baseline when needed.
 
 ### Allocation service
 
-- Exposes one cost interface shared by Genetic Algorithm, Particle Swarm Optimization, and Ant Colony Optimization implementations.
-- Calculates the configurable weighted cost from walking distance, congestion, waiting contribution, and fairness.
-- Returns the chosen slot, cost, iterations, latency, and objective breakdown.
-- Benchmarks all algorithms against identical scenarios and deterministic test seeds.
+- Shares the objective across NSGA-II, GA, PSO, ACO, first-available, and exact enumeration.
+- Excludes occupied slots and returns the selected free slot with metrics.
 
-### Persistence
+### Persistence and dashboard
 
-SQLite is the initial system of record. The planned tables are `parking_slots`,
-`occupancy_events`, `vehicles`, `parking_sessions`, `context_samples`,
-`allocations`, `optimizer_runs`, and `prediction_runs`. Database initialization
-seeds the configured slots and their walking-distance and zone metadata; the
-committed demo configuration contains five.
+SQLite is the system of record for slots, vehicles, parking sessions, context samples, allocations, optimizer runs, and prediction records. The dashboard consumes server status and event-stream APIs; the 3D scene animates the confirmed assignment and exit.
 
 ## Primary Data Flows
 
-### Vehicle entry
+### Entry
 
-1. The controller reads an RFID UID and calls `POST /api/vehicle/entry`.
-2. The backend validates the vehicle and obtains the latest accepted occupancy state.
-3. The selected optimizer ranks only free slots using the configured objective weights.
-4. The backend persists the allocation and session, then returns the assigned slot and gate action.
-5. The controller displays the slot, activates its LED, and performs the safe gate cycle.
+1. The controller reads a tag and requests current status.
+2. It submits an idempotent entry request.
+3. The backend verifies that the vehicle is not already parked, selects a free slot, and commits the session and allocation together.
+4. The response confirms the slot and authorizes one tabletop gate cycle.
+5. The controller updates the OLED and the assigned slot LED; the dashboard animates the vehicle into that slot.
 
-### Occupancy update
+### Exit
 
-1. The camera supplies a frame to the server.
-2. The occupancy service evaluates each configured ROI.
-3. Temporal smoothing accepts or rejects each candidate transition.
-4. Accepted changes update the current slot state and append occupancy events.
-5. API consumers and the dashboard observe the updated state.
-
-The separate Python camera poller validates bounded JPEG responses and posts
-them to the occupancy API with retry/backoff. Camera transitions cannot clear a
-slot protected by an active RFID session. Calibrating the five ROIs and
-measuring detector accuracy against real scene labels remain physical setup
-tasks.
+1. The controller reads the parked vehicle's tag and submits an idempotent exit request.
+2. The backend closes the active session and releases its assigned slot atomically.
+3. The controller turns off the slot LED and performs one authorized gate cycle.
+4. The dashboard animates the vehicle leaving and reconciles the free slot state.
 
 ### Forecast and comparison
 
-1. Historical occupancy and contextual data are converted into shared sequences.
-2. LSTM, GRU, and Transformer models use the same data splits.
-3. Metrics and latency are persisted for comparison.
-4. The runtime endpoint serves the configured model or deterministic fallback.
+Historical context, sessions, and allocations are converted into shared time-series sequences. Forecasting and allocation endpoints expose their comparisons to the dashboard. Synthetic experiment results are identified separately from physical controller observations.
 
 ## API Boundary
-
-The initial API consists of:
 
 - `GET /health`
 - `GET /api/parking/status`
 - `POST /api/vehicle/entry`
 - `POST /api/vehicle/exit`
-- `POST /api/camera/occupancy`
+- `GET /api/parking/events/stream`
+- `POST /api/parking/hardware-events`
 - `GET /api/prediction`
 - `POST /api/allocation/run`
 - `GET /api/benchmarks/optimizers`
 - `GET /api/benchmarks/predictors`
 - `GET /dashboard`
 
-Request and response schemas must be defined explicitly and shared by the API and tests. Hardware endpoints must tolerate retries without creating duplicate active sessions or allocations.
-
 ## Configuration and Deployment
 
-- Environment variables select hardware or demo mode and hold network/runtime settings.
-- `config/parking.yaml` owns slot metadata, optimizer weights, timing, and thresholds.
-- `config/rois.example.json` documents one camera region per demo slot; a local calibrated ROI file is not committed.
-- The backend initially runs as one process on a laptop/server with SQLite stored on a persistent local volume.
-- Firmware contains no backend secrets and receives the backend URL and Wi-Fi credentials through local configuration.
-- Controller and camera JSON serial metrics can be captured with
-  `scripts.hardware_evaluation`; operator-entered observations are required for
-  RFID trial denominators, LED correctness, and power measurements. Empty
-  physical measurements are explicitly `NOT TESTED`.
-- Physical operation requires the server to be reachable from a trusted LAN.
-  The current development service binds to loopback by default and the API has
-  no device authentication or TLS; networking must be deliberately configured
-  and access restricted before attaching a device.
+- `config/parking.yaml` defines slot metadata, scene routes, and allocation weights.
+- The backend runs on a local computer with SQLite on local storage.
+- Firmware receives local Wi-Fi credentials and API URL through private configuration; secrets are not committed.
+- The controller communicates over a trusted local network.
+- Hardware measurements distinguish recorded observations from quantities still marked `NOT TESTED`.
 
 ## Quality Attributes
 
-- **Safety:** the gate fails closed and occupied slots cannot be assigned.
-- **Determinism:** tests, demo data, and optimizer benchmarks use controlled seeds.
-- **Resilience:** missing model artifacts, uncertain frames, or disconnected hardware degrade to documented fallbacks.
-- **Comparability:** all competing algorithms receive the same data, objectives, scenarios, and metrics.
-- **Replaceability:** vision modes, predictors, and optimizers share stable service interfaces.
-- **Demoability:** every backend flow works with simulated camera and RFID input.
-
-## Planned Repository Areas
-
-```text
-backend/       FastAPI application, persistence, domain schemas, dashboard
-vision/        capture, ROI detection, classifier training, dataset tools
-prediction/    preprocessing, model training, evaluation, comparison
-optimization/  fitness function, GA, PSO, ACO, benchmark runner
-firmware/      ESP32 controller and ESP32-CAM sketches
-config/        versioned example and default configuration
-scripts/       demo seeding and end-to-end demo commands
-tests/         unit and integration tests
-docs/          detailed specifications and future implementation plans
-```
-
-## Architectural Constraints
-
-- Version 1 ships a five-slot prototype while backend slot cardinality remains configuration-driven.
-- Heavy vision and prediction inference does not run on either ESP32.
-- The dashboard uses server-rendered/static HTML, CSS, and JavaScript without a frontend framework.
-- Hardware integration must be enabled through configuration, not source changes.
-- New algorithms must plug into the shared comparison interfaces rather than bypass them.
+- **Safety:** failed or uncertain transactions leave the gate closed; occupied slots are not reassigned.
+- **Determinism:** demo data and optimizer benchmarks use fixed seeds.
+- **Resilience:** retries reuse idempotency keys and dashboard state reconciles with the backend.
+- **Comparability:** algorithms share inputs, constraints, objectives, and metrics.
+- **Demoability:** software lifecycle and dashboard operate without physical hardware.

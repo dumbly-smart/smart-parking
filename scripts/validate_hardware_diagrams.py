@@ -12,7 +12,6 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 CONTROLLER_HEADER = ROOT / "firmware/esp32_controller/include/pins.h"
-CAMERA_HEADER = ROOT / "firmware/esp32_cam/include/camera_board.h"
 PIN_TABLE = ROOT / "docs/hardware/pin_connections.csv"
 DIAGRAMS = (
     ROOT / "docs/hardware/system_architecture.dot",
@@ -37,7 +36,6 @@ def array(source: str, name: str) -> list[int]:
 
 def main() -> int:
     controller = CONTROLLER_HEADER.read_text(encoding="utf-8")
-    camera = CAMERA_HEADER.read_text(encoding="utf-8")
     with PIN_TABLE.open(newline="", encoding="utf-8") as file:
         rows = list(csv.DictReader(file))
 
@@ -58,19 +56,6 @@ def main() -> int:
         for index, gpio in enumerate(array(controller, "SlotLeds"), 1)
     })
 
-    cam_expected = {
-        "PWDN": constant(camera, "Pwdn"), "RESET": constant(camera, "Reset"),
-        "XCLK": constant(camera, "Xclk"), "SIOD": constant(camera, "Siod"),
-        "SIOC": constant(camera, "Sioc"), "VSYNC": constant(camera, "Vsync"),
-        "HREF": constant(camera, "Href"), "PCLK": constant(camera, "Pclk"),
-    }
-    for pin_name in ("Y2", "Y3", "Y4", "Y5", "Y6", "Y7", "Y8", "Y9"):
-        cam_expected[pin_name] = constant(camera, pin_name)
-    expected.update({
-        ("AI-Thinker ESP32-CAM", "OV2640", signal): gpio
-        for signal, gpio in cam_expected.items()
-    })
-
     actual = {
         (row["Board"], row["Component"], row["Signal"]): int(row["GPIO"])
         for row in rows if row["GPIO"] not in ("", "-")
@@ -85,8 +70,6 @@ def main() -> int:
                   "330", "common", "3V3", "5V", "separate", "vehicle barrier"):
         if token.lower() not in diagram_text.lower():
             errors.append(f"diagrams do not document required wiring/safety detail: {token}")
-    if "OV2640" not in diagram_text or "AI-Thinker" not in diagram_text:
-        errors.append("system/wiring diagrams must identify the AI-Thinker ESP32-CAM and OV2640")
     if "SCK18" not in diagram_text or "MISO19" not in diagram_text or "MOSI23" not in diagram_text:
         errors.append("wiring diagram must label the RC522 SPI pin mapping")
     if errors:

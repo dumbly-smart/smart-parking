@@ -1,0 +1,17 @@
+{"commanded_on": false, "event": "slot_led", "gpio": 25, "host_received_at_utc": "2026-10-26T06:55:45.446Z", "occupied": false, "slot": 1}
+{"commanded_on": false, "event": "slot_led", "gpio": 26, "host_received_at_utc": "2026-10-26T06:55:45.451Z", "occupied": false, "slot": 2}
+{"commanded_on": false, "event": "slot_led", "gpio": 27, "host_received_at_utc": "2026-10-26T06:55:45.460Z", "occupied": false, "slot": 3}
+{"commanded_on": false, "event": "slot_led", "gpio": 32, "host_received_at_utc": "2026-10-26T06:55:45.465Z", "occupied": false, "slot": 4}
+{"commanded_on": false, "event": "slot_led", "gpio": 33, "host_received_at_utc": "2026-10-26T06:55:45.474Z", "occupied": false, "slot": 5}
+{"event": "rfid_read", "free_heap_bytes": 238352, "host_received_at_utc": "2026-10-26T06:57:01.263Z", "success": true, "uptime_ms": 88079}
+{"event": "api_transaction", "free_heap_bytes": 236664, "host_received_at_utc": "2026-10-26T06:57:04.731Z", "http_status": 200, "latency_ms": 1431, "operation": "entry", "success": true, "uptime_ms": 91540}
+{"commanded_on": true, "event": "slot_led", "gpio": 25, "host_received_at_utc": "2026-10-26T06:57:05.345Z", "occupied": true, "slot": 1}
+{"event": "gate_command", "free_heap_bytes": 235960, "host_received_at_utc": "2026-10-26T06:57:05.376Z", "latency_ms": 3300, "operation": "entry", "uptime_ms": 92189}
+{"event": "gate_command", "free_heap_bytes": 238120, "host_received_at_utc": "2026-10-26T06:57:07.878Z", "latency_ms": 5800, "operation": "entry", "uptime_ms": 94689}
+{"event": "rfid_read", "free_heap_bytes": 238136, "host_received_at_utc": "2026-10-26T06:57:10.670Z", "success": true, "uptime_ms": 97484}
+{"event": "api_transaction", "free_heap_bytes": 236344, "host_received_at_utc": "2026-10-26T06:57:13.945Z", "http_status": 200, "latency_ms": 1220, "operation": "exit", "success": true, "uptime_ms": 100752}
+{"commanded_on": false, "event": "slot_led", "gpio": 25, "host_received_at_utc": "2026-10-26T06:57:14.872Z", "occupied": false, "slot": 1}
+{"event": "gate_command", "free_heap_bytes": 236092, "host_received_at_utc": "2026-10-26T06:57:14.905Z", "latency_ms": 3200, "operation": "exit", "uptime_ms": 101715}
+{"event": "gate_command", "free_heap_bytes": 237944, "host_received_at_utc": "2026-10-26T06:57:17.851Z", "latency_ms": 6144, "operation": "exit", "uptime_ms": 104659}
+{"event": "rfid_trial", "host_received_at_utc": "2026-10-26T06:57:01.263Z", "operation": "entry", "source": "operator-confirmed scan with matching serial rfid_read and HTTP 200 transaction", "success": true, "trial_id": 1, "uptime_ms": 88079}
+{"event": "rfid_trial", "host_received_at_utc": "2026-10-26T06:57:10.670Z", "operation": "exit", "source": "operator-confirmed scan with matching serial rfid_read and HTTP 200 transaction", "success": true, "trial_id": 2, "uptime_ms": 97484}

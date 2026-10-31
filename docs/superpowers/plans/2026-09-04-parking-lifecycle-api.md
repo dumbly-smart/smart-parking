@@ -24,7 +24,7 @@
 - Entry and exit use `BEGIN IMMEDIATE` and return an open-gate action only after commit.
 - Stored timestamps are timezone-aware UTC strings.
 - Lifecycle seeds are unsigned SHA-256 prefixes stored losslessly as hexadecimal text.
-- Camera, prediction, dashboard, and firmware changes are out of scope.
+- Prediction, dashboard, and firmware changes are out of scope.
 
 ---
 
@@ -433,7 +433,7 @@ git commit -m "feat: add vehicle exit and parking status"
 **Interfaces:**
 - Documents: request/response examples for all three public endpoints
 - Records: persistent shared idempotency namespace and `BEGIN IMMEDIATE` transaction boundary
-- Advances: Milestone 3 to complete and vision occupancy to next task
+- Advances: Milestone 3 to complete and occupancy extensions to a later task
 
 - [x] **Step 1: Add README API examples**
 
@@ -474,7 +474,7 @@ silent.
 
 Set Parking lifecycle API to complete, record exact test counts and commands,
 active branch and latest implementation commit, and name the occupancy
-heuristic/ROI camera update flow as the next concrete task.
+additional occupancy-update flow as the next concrete task.
 
 - [x] **Step 5: Review and commit documentation**
 

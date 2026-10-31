@@ -13,6 +13,7 @@ class ParticleSwarmOptimizer:
     def optimize(self, request: AllocationRequest) -> AllocationResult:
         started_at = perf_counter()
         available = available_candidates(request)
+        available_index = {candidate.slot_id: index for index, candidate in enumerate(available)}
         rng = random.Random(request.seed)
         positions = [rng.uniform(0, len(available) - 1) for _ in range(2)]
         velocities = [rng.uniform(-0.5, 0.5) for _ in positions]
@@ -26,9 +27,9 @@ class ParticleSwarmOptimizer:
                 for old, current in zip(personal_best, visited, strict=True)
             ]
             best = best_candidate([best, *personal_best], request)
-            best_index = available.index(best)
+            best_index = available_index[best.slot_id]
             for index in range(len(positions)):
-                personal_index = available.index(personal_best[index])
+                personal_index = available_index[personal_best[index].slot_id]
                 velocities[index] = (
                     0.5 * velocities[index]
                     + rng.random() * (personal_index - positions[index])

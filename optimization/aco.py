@@ -14,6 +14,7 @@ class AntColonyOptimizer:
     def optimize(self, request: AllocationRequest) -> AllocationResult:
         started_at = perf_counter()
         available = available_candidates(request)
+        available_index = {candidate.slot_id: index for index, candidate in enumerate(available)}
         rng = random.Random(request.seed)
         pheromones = [1.0 for _ in available]
         best = rng.choice(available)
@@ -26,7 +27,7 @@ class AntColonyOptimizer:
             candidate = best_candidate(chosen, request)
             best = best_candidate([best, candidate], request)
             pheromones = [value * 0.8 for value in pheromones]
-            pheromones[available.index(best)] += 1.0 / (
+            pheromones[available_index[best.slot_id]] += 1.0 / (
                 weighted_cost(best, request.weights)[0] + 1e-9
             )
         return result_for(self.name, request, best, started_at)

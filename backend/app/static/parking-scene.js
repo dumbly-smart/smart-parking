@@ -5,6 +5,8 @@ const mat = (color, options = {}) => new THREE.MeshStandardMaterial({ color, rou
 const palette = { asphalt: 0x263943, ground: 0x142b31, border: 0x758e83, line: 0xd1e9ca, lime: 0xc9f46e, orange: 0xff9b6e, teal: 0x4cb7be, white: 0xeaf4ee };
 const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
+export { label as createGarageSign };
+
 function box(parent, width, height, depth, color, x, y, z, materialOptions = {}) {
   const mesh = new THREE.Mesh(new THREE.BoxGeometry(width, height, depth), mat(color, materialOptions));
   mesh.position.set(x, y, z);
@@ -168,8 +170,8 @@ export async function createParkingScene(container, onSelect, sceneConfig = {}) 
     });
     return model;
   }
-  const scene = new THREE.Scene(); scene.background = new THREE.Color(0x172a34); scene.fog = new THREE.Fog(0x172a34, 29, 65);
-  const camera = new THREE.PerspectiveCamera(38, 1, .1, 100);
+  const scene = new THREE.Scene(); scene.background = new THREE.Color(0x172a34); scene.fog = new THREE.Fog(0x172a34, 150, 310);
+  const camera = new THREE.PerspectiveCamera(38, 1, .1, 800);
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: "high-performance" });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2)); renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -177,7 +179,7 @@ export async function createParkingScene(container, onSelect, sceneConfig = {}) 
   scene.add(new THREE.HemisphereLight(0xd9f6ea, 0x1a3039, 2.4));
   const sun = new THREE.DirectionalLight(0xfff7d8, 3.1); sun.position.set(-6, 15, 10); sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048); sun.shadow.camera.left = -25; sun.shadow.camera.right = 25; sun.shadow.camera.top = 20; sun.shadow.camera.bottom = -20; sun.shadow.bias = -.0005; scene.add(sun);
   const world = new THREE.Group(); scene.add(world);
-  let slots = [], signature = "", positions = new Map(), pads = new Map(), labels = new Map(), edges = new Map(), cars = new Map(), barriers = new Map(), motions = new Map(), selectedId = null, cameraMotion = null;
+  let slots = [], signature = "", mapData = null, positions = new Map(), pads = new Map(), labels = new Map(), edges = new Map(), cars = new Map(), trafficCars = new Map(), barriers = new Map(), motions = new Map(), selectedId = null, cameraMotion = null;
   let width = sceneConfig.width || 17, orbit = .38, distance = 22, height = 14;
   const hardwareGate = new Map();
   const target = new THREE.Vector3();
@@ -187,7 +189,21 @@ export async function createParkingScene(container, onSelect, sceneConfig = {}) 
   function moveCamera(x, z, nextDistance, nextHeight, nextOrbit = orbit) {
     cameraMotion = { start: performance.now(), from: { x: target.x, z: target.z, distance, height, orbit }, to: { x, z, distance: nextDistance, height: nextHeight, orbit: nextOrbit } };
   }
-  function resetView() { moveCamera(0, 0, Math.max(23.5, width * 1.3), Math.max(15, width * .8), .38); }
+  function resetView() {
+    const center = sceneConfig.center || { x: 0, z: 0 };
+    const bounds = mapData?.bounds;
+    const spanX = bounds ? bounds.max_x - bounds.min_x : width;
+    const spanZ = bounds ? bounds.max_y - bounds.min_y : 18;
+    const x = bounds ? (bounds.min_x + bounds.max_x) / 2 : center.x;
+    const z = bounds ? -(bounds.min_y + bounds.max_y) / 2 : center.z;
+    const extent = Math.max(spanX, spanZ);
+    moveCamera(x, z, Math.max(23.5, extent * 1.08), Math.max(15, extent * .64), .38);
+  }
+  function focusLiveBays() {
+    if (!positions.size) return resetView();
+    const values = [...positions.values()];
+    moveCamera(values.reduce((sum, value) => sum + value.x, 0) / values.length, values.reduce((sum, value) => sum + value.z, 0) / values.length, 28, 19, .38);
+  }
   function focusSlot(slotId) {
     const pos = positions.get(slotId);
     if (!pos) return;
@@ -196,64 +212,116 @@ export async function createParkingScene(container, onSelect, sceneConfig = {}) 
   function layout(slotList) {
     while (world.children.length) world.remove(world.children[0]);
     for (const motion of motions.values()) motion.resolve();
+    for (const { model } of trafficCars.values()) world.remove(model);
+    trafficCars.clear();
     pads = new Map(); labels = new Map(); edges = new Map(); positions = new Map(); cars = new Map(); barriers = new Map(); motions = new Map();
     slots = slotList;
     const cols = Math.ceil(slotList.length / 2);
     width = sceneConfig.width || Math.max(17, cols * 3.85 + 6.8);
-    const half = width / 2;
     const bayX = (column) => (column - (cols - 1) / 2) * 3.85;
-    const modelSlotIds = sceneConfig.asset_slot_ids || [];
-    const useAssetLot = Boolean(lotTemplate && sceneConfig.asset === "parking-lot.glb" && modelSlotIds.length === slotList.length && slotList.every((slot) => modelSlotIds.includes(slot.id) && sceneConfig.slots?.[slot.id]));
-    if (useAssetLot) world.add(lotTemplate.clone(true));
-    else {
+    const bounds = mapData?.bounds || { min_x: -width / 2, max_x: width / 2, min_y: -7, max_y: 7 };
+    const floorCenterX = (bounds.min_x + bounds.max_x) / 2;
+    const floorCenterZ = -(bounds.min_y + bounds.max_y) / 2;
+    const floorWidth = bounds.max_x - bounds.min_x + 16;
+    const floorDepth = bounds.max_y - bounds.min_y + 16;
+    const ground = new THREE.Mesh(new THREE.PlaneGeometry(floorWidth + 35, floorDepth + 35), mat(0x10242d));
+    ground.rotation.x = -Math.PI / 2; ground.position.set(floorCenterX, -.78, floorCenterZ); ground.receiveShadow = true; world.add(ground);
+
+    const lineSegment = (points, thickness, height, color, y) => {
+      const [a, b] = points, dx = b[0] - a[0], dy = b[1] - a[1];
+      const length = Math.hypot(dx, dy), centerX = (a[0] + b[0]) / 2, centerZ = -(a[1] + b[1]) / 2;
+      const mesh = box(world, length, height, thickness, color, centerX, y, centerZ, { roughness: .9, metalness: 0 });
+      mesh.rotation.y = Math.atan2(-dy, dx);
+      return mesh;
+    };
+    if (mapData?.outline?.length) {
+      const shape = new THREE.Shape();
+      shape.moveTo(mapData.outline[0][0], mapData.outline[0][1]);
+      for (const point of mapData.outline.slice(1)) shape.lineTo(point[0], point[1]);
+      shape.closePath();
+      const floor = new THREE.Mesh(new THREE.ShapeGeometry(shape), mat(0x40554f, { map: asphaltTexture(), roughness: 1, metalness: 0 }));
+      floor.rotation.x = -Math.PI / 2; floor.position.y = -.34; floor.receiveShadow = true; world.add(floor);
+
+      for (const aisle of mapData.aisles || []) {
+        for (let index = 1; index < aisle.points.length; index++) lineSegment([aisle.points[index - 1], aisle.points[index]], aisle.width || 5.2, .035, aisle.kind === "ramp" ? 0x394c4e : 0x26363a, -.16);
+        for (let index = 1; index < aisle.points.length; index++) lineSegment([aisle.points[index - 1], aisle.points[index]], .075, .018, 0x80958b, -.115);
+      }
+      const bayVertices = [];
+      for (const bay of mapData.reference_bays || []) {
+        const bayWidth = bay.orientation === "east-west" ? 5 : 2.5;
+        const bayDepth = bay.orientation === "east-west" ? 2.5 : 5;
+        const x = bay.x, y = bay.y, halfW = bayWidth / 2, halfD = bayDepth / 2;
+        for (const [a, b] of [
+          [[x - halfW, y - halfD], [x + halfW, y - halfD]],
+          [[x - halfW, y + halfD], [x + halfW, y + halfD]],
+          [[x - halfW, y - halfD], [x - halfW, y + halfD]],
+          [[x + halfW, y - halfD], [x + halfW, y + halfD]],
+        ]) bayVertices.push(a[0], .055, -a[1], b[0], .055, -b[1]);
+      }
+      if (bayVertices.length) {
+        const geometry = new THREE.BufferGeometry();
+        geometry.setAttribute("position", new THREE.Float32BufferAttribute(bayVertices, 3));
+        const bayLines = new THREE.LineSegments(geometry, new THREE.LineBasicMaterial({ color: 0xa9b7ac, transparent: true, opacity: .96 }));
+        bayLines.frustumCulled = false;
+        world.add(bayLines);
+      }
+      for (const core of mapData.service_cores || []) {
+        box(world, core.width, 2.2, core.depth, 0x344d55, core.x, .78, -core.y, { roughness: .7 });
+        const coreLabel = label(core.name.toUpperCase(), { color: "#c5d5cc", width: 260, height: 70, size: 29 });
+        coreLabel.position.set(core.x, 2.05, -core.y); coreLabel.scale.set(Math.max(5, core.width * 1.25), 1.5, 1); world.add(coreLabel);
+      }
+      for (const zone of mapData.zones || []) {
+        const zoneLabel = label(`ZONE ${zone.id}`, { color: "#dce8d8", background: "#1c343b", width: 210, height: 72, size: 31 });
+        zoneLabel.position.set(zone.x, .85, -zone.y); zoneLabel.scale.set(5.5, 1.9, 1); world.add(zoneLabel);
+      }
+      for (const column of mapData.columns || []) box(world, .55, 3.2, .55, 0x697779, column.x, 1.28, -column.y, { roughness: .55, metalness: .16 });
+      for (const [index, ramp] of (mapData.ramps || []).entries()) {
+        for (let point = 1; point < ramp.points.length; point++) lineSegment([ramp.points[point - 1], ramp.points[point]], 6.8, .06, 0x55685e, -.06);
+        const end = ramp.points.at(-1), sign = label(ramp.name.toUpperCase(), { color: index < 2 ? "#d7fb9a" : "#c7d8d0", width: 340, height: 84, size: 31 });
+        sign.position.set(end[0], .65, -end[1]); sign.scale.set(6.5, 1.6, 1); world.add(sign);
+      }
+      const outlinePoints = [...mapData.outline, mapData.outline[0]];
+      for (let index = 1; index < outlinePoints.length; index++) lineSegment([outlinePoints[index - 1], outlinePoints[index]], .48, .65, 0x71867d, .12);
+      const labelContext = label("HANEDA P2 · 5F · 396 SPACES", { color: "#c0cec8", width: 510, height: 92, size: 31 });
+      labelContext.position.set(bounds.max_x - 20, .7, -(bounds.min_y + 4)); labelContext.scale.set(15, 2.5, 1); world.add(labelContext);
+    } else {
       box(world, width + 3, .48, 13.8, palette.ground, 0, -.37, 0);
       box(world, width + 1.2, .12, 10.65, 0xffffff, 0, -.065, 0, { map: asphaltTexture(), roughness: 1, metalness: 0 });
-      box(world, width + .8, .025, 3.4, 0x2b434e, 0, .011, 0, { roughness: 1 });
-      for (let x = -half + 1; x < half; x += 2.8) box(world, 1.15, .012, .045, 0xe5e8bf, x, .03, 0);
-      for (const z of [-5.12, 5.12]) box(world, width + 1.1, .13, .15, palette.border, 0, .035, z);
-      for (const z of [-5.65, 5.65]) box(world, width + 1.2, .08, .92, 0x60776d, 0, -.005, z);
-      for (const x of [-half + 2.15, half - 2.15]) {
-        for (let stripe = -3; stripe <= 3; stripe++) box(world, .13, .014, .28, 0xe0e5d5, x + stripe * .31, .04, 0);
-      }
+    }
+
+    // Main entry and exit gate arms align with the SUMO aisle endpoints.
+    const gateSpecs = mapData?.gates || [
+      { operation: "entry", x: -55, y: 15, axis: "z" },
+      { operation: "exit", x: 55, y: 15, axis: "z" },
+    ];
+    for (const gate of gateSpecs) {
+      const { operation, x, y, axis } = gate;
+      const color = operation === "entry" ? palette.lime : palette.orange;
+      const z = -y;
+      const post = box(world, .2, 1.25, .2, 0x82958a, x, .64, z);
+      const pivot = new THREE.Group(); pivot.position.set(x, 1.2, z); pivot.name = `${operation === "entry" ? "Entry" : "Exit"} barrier pivot`; world.add(pivot);
+      const beam = box(pivot, 3.8, .15, .14, color, 0, 0, 0); beam.rotation.y = Math.PI / 2;
+      if (axis === "x") beam.rotation.y = 0;
+      barriers.set(operation, pivot);
+      post.name = `${operation} gate post`;
     }
     for (let i = 0; i < slotList.length; i++) {
-      const slot = slotList[i], configured = sceneConfig.slots?.[slot.id], row = configured ? Math.sign(configured.position.z) || 1 : i % 2 === 0 ? -1 : 1, column = Math.floor(i / 2), x = configured?.position.x ?? bayX(column), z = configured?.position.z ?? row * 3.48;
+      const slot = slotList[i], configured = sceneConfig.slots?.[slot.id], row = configured ? (configured.position.z > -15 ? -1 : 1) : i % 2 === 0 ? -1 : 1, column = Math.floor(i / 2), x = configured?.position.x ?? bayX(column), z = configured?.position.z ?? row * 5;
       positions.set(slot.id, { x, z, row, heading: configured?.heading ?? (row === -1 ? Math.PI / 2 : -Math.PI / 2), entryRoute: configured?.entry_route, exitRoute: configured?.exit_route });
-      const pad = box(world, 3.35, .018, 2.68, slot.occupied ? 0x46505a : 0x3a594c, x, .041, z);
+      const pad = box(world, 2.36, .028, 4.86, slot.occupied ? 0x46505a : 0x3a594c, x, .041, z);
       pad.userData.slotId = slot.id; pads.set(slot.id, pad);
       const edgeColor = slot.occupied ? palette.orange : palette.lime;
-      const edge = box(world, 3.4, .045, .065, edgeColor, x, .08, z + row * 1.35); edges.set(slot.id, edge);
-      if (!useAssetLot) {
-        for (const offset of [-1.68, 1.68]) box(world, .06, .046, 2.75, 0xa9cdb1, x + offset, .08, z);
-        box(world, .92, .22, .16, 0x9aac9b, x, .19, z + row * 1.12);
-      }
-      box(world, .76, .017, .32, 0x6e8d72, x, .076, z - row * .94);
-      const marker = label(slot.name, { color: slot.occupied ? "#ffb28a" : "#d7fb9a" }); marker.position.set(x, .75, z - row * 1.76); marker.scale.set(2.3, .73, 1); world.add(marker); labels.set(slot.id, marker);
+      const approach = z > -15 ? -1 : 1;
+      const edge = box(world, 2.4, .055, .09, edgeColor, x, .085, z - approach * 2.38); edges.set(slot.id, edge);
+      for (const offset of [-1.22, 1.22]) box(world, .055, .045, 4.9, edgeColor, x + offset, .075, z);
+      box(world, 2.4, .045, .055, edgeColor, x, .075, z + approach * 2.42);
+      const marker = label(slot.name, { color: slot.occupied ? "#ffb28a" : "#d7fb9a" }); marker.position.set(x, .7, z + approach * 2.8); marker.scale.set(2.3, .73, 1); world.add(marker); labels.set(slot.id, marker);
       const slotNumber = label(String(slot.id).padStart(2, "0"), { width: 112, height: 64, size: 34, color: "#a3c5b1", background: "#29433d" }); slotNumber.position.set(x, .13, z); slotNumber.scale.set(1.15, .65, 1); world.add(slotNumber);
     }
-    if (!useAssetLot) {
-      for (let x = -half + 1.1; x < half; x += 3.85) { tree(world, x, -6.05); tree(world, x + 1.5, 6.05); }
-      lamp(world, -half + 2, -5.9); lamp(world, half - 2, 5.9);
-      for (const x of [-half + 1.6, half - 1.6]) for (const z of [-4.9, 4.9]) {
-        disc(world, .09, .55, 0xc7dbbb, x, .34, z);
-        disc(world, .095, .065, 0xd8e999, x, .64, z);
-      }
+    for (let x = bounds.min_x + 5; x < bounds.max_x; x += 20) {
+      const light = new THREE.PointLight(0xcff8b2, 2.2, 23); light.position.set(x, 7, floorCenterZ); world.add(light);
+      box(world, 3.8, .12, .28, 0xb6cdbf, x, 7.2, floorCenterZ);
     }
-    // Entry and exit portals sit at the ends of the central driving lane.
-    for (const [x, name, color] of [[-half + .55, "ENTRY", palette.lime], [half - .55, "EXIT", palette.orange]]) {
-      if (!useAssetLot) {
-        box(world, .16, 2.2, .16, color, x, 1.12, -1.8); box(world, .16, 2.2, .16, color, x, 1.12, 1.8);
-        box(world, .18, .16, 3.7, color, x, 2.2, 0);
-        box(world, .12, .8, .12, 0x718d86, x, .46, -2.3);
-        box(world, 1.4, .06, .12, 0xf2f5e6, x + (name === "ENTRY" ? .68 : -.68), .84, -2.3);
-      }
-      const sign = label(name, { color: name === "ENTRY" ? "#d5fa83" : "#ffb28d", width: 290, height: 80, size: 35 }); sign.position.set(x, 2.85, 0); world.add(sign);
-    }
-    if (useAssetLot) for (const operation of ["entry", "exit"]) {
-      const pivot = world.getObjectByName(`${operation === "entry" ? "Entry" : "Exit"} barrier pivot`);
-      if (pivot) barriers.set(operation, pivot);
-    }
-    const ground = new THREE.Mesh(new THREE.PlaneGeometry(100, 100), mat(0x10242d)); ground.rotation.x = -Math.PI / 2; ground.position.y = -.58; ground.receiveShadow = true; world.add(ground);
     resetView(); syncSlots(slotList);
   }
   function paintSlot(slot) {
@@ -285,9 +353,15 @@ export async function createParkingScene(container, onSelect, sceneConfig = {}) 
     model.traverse((item) => { if (item.isGroup && item.name.startsWith("Wheel ")) wheels.push(item); });
     const place = (progress) => {
       const point = route.getPointAt(progress);
-      const turn = smooth(THREE.MathUtils.clamp(Math.abs(point.z) / 2.8, 0, 1));
+      const tangent = route.getTangentAt(progress);
+      const routeYaw = Math.atan2(tangent.x, tangent.z);
+      const fromYaw = operation === "entry" ? routeYaw : parkedYaw;
+      const toYaw = operation === "entry" ? parkedYaw : routeYaw;
+      const turnProgress = operation === "entry" ? (progress - .72) / .28 : progress / .26;
+      const turn = smooth(THREE.MathUtils.clamp(turnProgress, 0, 1));
+      const yawDelta = THREE.MathUtils.euclideanModulo(toYaw - fromYaw + Math.PI, Math.PI * 2) - Math.PI;
       model.position.copy(point);
-      model.rotation.y = parkedYaw * turn;
+      model.rotation.y = fromYaw + yawDelta * turn;
       return point;
     };
     if (reducedMotion) {
@@ -370,6 +444,11 @@ export async function createParkingScene(container, onSelect, sceneConfig = {}) 
         motion.resolve();
       }
     }
+    for (const { model, target: destination, yaw } of trafficCars.values()) {
+      model.position.lerp(destination, .22);
+      let delta = THREE.MathUtils.euclideanModulo(yaw - model.rotation.y + Math.PI, Math.PI * 2) - Math.PI;
+      model.rotation.y += delta * .2;
+    }
     renderer.render(scene, camera);
   }
   const resize = new ResizeObserver(() => { const rect = container.getBoundingClientRect(); if (!rect.width || !rect.height) return; camera.aspect = rect.width / rect.height; camera.updateProjectionMatrix(); renderer.setSize(rect.width, rect.height, false); }); resize.observe(container);
@@ -381,9 +460,44 @@ export async function createParkingScene(container, onSelect, sceneConfig = {}) 
     if (!drag.moved) { const rect = renderer.domElement.getBoundingClientRect(); pointer.set(((event.clientX - rect.left) / rect.width) * 2 - 1, -((event.clientY - rect.top) / rect.height) * 2 + 1); raycaster.setFromCamera(pointer, camera); const hits = raycaster.intersectObjects([...pads.values()]); if (hits.length) onSelect(hits[0].object.userData.slotId); }
     drag = null;
   });
-  renderer.domElement.addEventListener("wheel", (event) => { event.preventDefault(); cameraMotion = null; distance = THREE.MathUtils.clamp(distance + Math.sign(event.deltaY) * 1.2, 12, 45); cameraPosition(); }, { passive: false });
+  renderer.domElement.addEventListener("wheel", (event) => {
+    event.preventDefault(); cameraMotion = null;
+    const bounds = mapData?.bounds;
+    const mapExtent = bounds ? Math.max(bounds.max_x - bounds.min_x, bounds.max_y - bounds.min_y) : width;
+    const zoomStep = Math.max(1.2, mapExtent * .012);
+    distance = THREE.MathUtils.clamp(distance + Math.sign(event.deltaY) * zoomStep, 12, Math.max(45, mapExtent * 1.55));
+    cameraPosition();
+  }, { passive: false });
   resetView(); requestAnimationFrame(tick);
   function animateEvent(operation, slotId) { return startMotion(operation, slotId); }
   function setGate(operation, opened) { if (opened === null) hardwareGate.delete(operation); else hardwareGate.set(operation, opened); }
-  return { syncSlots, selectSlot, resetView, focusSlot, animateEvent, setGate };
+  function setMapData(data) { mapData = data; if (slots.length) layout(slots); }
+  function setTrafficSnapshot(snapshot) {
+    const live = new Set();
+    for (const vehicle of snapshot?.vehicles || []) {
+      const x = Number(vehicle.x), y = Number(vehicle.y), speed = Number(vehicle.speed_mps), angle = Number(vehicle.angle);
+      if (![x, y, speed, angle].every(Number.isFinite)) continue;
+      if (mapData && (x < mapData.bounds.min_x - 8 || x > mapData.bounds.max_x + 8 || y < mapData.bounds.min_y - 8 || y > mapData.bounds.max_y + 8)) continue;
+      const id = String(vehicle.id), target = new THREE.Vector3(x, .12, -y);
+      let state = trafficCars.get(id);
+      const radians = angle * Math.PI / 180;
+      const yaw = Math.atan2(Math.sin(radians), -Math.cos(radians));
+      if (!state) {
+        const model = createCar(0x5bd6e4);
+        model.position.copy(target); model.rotation.y = yaw; world.add(model);
+        state = { model, target, yaw };
+        trafficCars.set(id, state);
+      } else {
+        state.target.copy(target);
+        state.yaw = yaw;
+      }
+      live.add(id);
+    }
+    for (const [id, state] of trafficCars) {
+      if (live.has(id)) continue;
+      world.remove(state.model);
+      trafficCars.delete(id);
+    }
+  }
+  return { syncSlots, selectSlot, resetView, focusSlot, focusLiveBays, animateEvent, setGate, setMapData, setTrafficSnapshot };
 }

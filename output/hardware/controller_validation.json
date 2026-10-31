@@ -1,26 +1,52 @@
 {
-  "provenance": "physical ESP32 serial events and local hardware API server access logs",
-  "controller_chip": "ESP32-D0WD-V3 revision 3.1",
-  "flash_size_bytes": 4194304,
-  "pre_flash_full_readback_bytes": 4194304,
-  "flash_image_hash_verified": true,
+  "authenticated_status_200_responses_after_latest_boot": 5,
+  "card_read_and_transactions": "Latest post-rewire tabletop trial: 2 RFID reads and 2/2 entry/exit API transactions succeeded with HTTP 200.",
   "controller_boot_events": 3,
-  "wifi_connected_events": 3,
+  "controller_chip": "ESP32-D0WD-V3 revision 3.1",
+  "current_firmware_image_sha256": "78cd8e129019a886ae4166b5bc2e0ff06ce17b1333d4eca3a732c5977b6042bb",
+  "flash_image_hash_verified": true,
+  "flash_size_bytes": 4194304,
+  "health_200_responses_after_latest_boot": 5,
+  "latest_live_validation": {
+    "api_transactions": 2,
+    "api_transactions_successful": 2,
+    "captured_at_utc": "2026-10-26T06:57:17.851Z",
+    "entry_api_latency_ms": 1431,
+    "entry_http_status": 200,
+    "entry_slot_observation": "S1 changed to occupied=true and commanded_on=true after successful entry; slot association inferred from subsequent controller status LED event.",
+    "exit_api_latency_ms": 1220,
+    "exit_http_status": 200,
+    "exit_slot_observation": "S1 changed to occupied=false and commanded_on=false after successful exit.",
+    "led_output_commands": "Five initial free-slot states were commanded off; S1 commanded on at entry and off at exit.",
+    "physical_led_visual_correctness": "NOT TESTED",
+    "physical_servo_motion": "NOT INDEPENDENTLY MEASURED",
+    "power_current_ma": "NOT TESTED",
+    "rfid_reads": 2,
+    "rfid_successes": 2,
+    "rfid_trials": 2,
+    "servo_command_delay_ms": [
+      3300,
+      5800,
+      3200,
+      6144
+    ],
+    "source_log": "live_controller_20261026_verified.jsonl",
+    "wifi_backend_confirmation": "Both authenticated vehicle transactions returned HTTP 200 after successful status synchronization."
+  },
+  "pre_flash_full_readback_bytes": 4194304,
+  "provenance": "physical ESP32 serial events and local hardware API server access logs",
   "rfid_reader_spi_probes": [
     {
-      "version_register": 255,
+      "host_received_at_utc": "2026-10-20T18:54:34.909Z",
       "ready": false,
-      "host_received_at_utc": "2026-10-20T18:54:34.909Z"
+      "version_register": 255
     },
     {
-      "version_register": 0,
+      "host_received_at_utc": "2026-10-20T18:56:32.045Z",
       "ready": false,
-      "host_received_at_utc": "2026-10-20T18:56:32.045Z"
+      "version_register": 0
     }
   ],
-  "health_200_responses_after_latest_boot": 5,
-  "authenticated_status_200_responses_after_latest_boot": 5,
-  "card_read_and_transactions": "NOT COMPLETED: no rfid_read event; reader VersionReg is not responding (0xFF and 0x00)",
-  "visual_led_oled_servo_power_camera_checks": "NOT TESTED",
-  "current_firmware_image_sha256": "9660b831073afae4fcfc0c979c16b09c66ff485a58ff65ff11b1dfab9f221f1d"
+  "visual_led_oled_servo_power_checks": "Firmware LED output commands recorded during entry/exit; physical LED visibility, OLED behavior, servo movement, and current draw were not independently measured. No separate visual sensor was used in this run.",
+  "wifi_connected_events": 3
 }

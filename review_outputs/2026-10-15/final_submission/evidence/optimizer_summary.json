@@ -1,0 +1,131 @@
+{
+  "actual_persisted_parking_sessions": 120,
+  "by_occupancy": {
+    "ACO:empty": {
+      "mean_cost": 0.175,
+      "mean_runtime_ms": 180.82431433333335,
+      "runs": 3
+    },
+    "ACO:light": {
+      "mean_cost": 0.1766718299041228,
+      "mean_runtime_ms": 160.59941855742298,
+      "runs": 357
+    },
+    "GA:empty": {
+      "mean_cost": 0.175,
+      "mean_runtime_ms": 0.5905693333333334,
+      "runs": 3
+    },
+    "GA:light": {
+      "mean_cost": 0.17718997424438424,
+      "mean_runtime_ms": 0.5923364537815126,
+      "runs": 357
+    },
+    "NSGA-II:empty": {
+      "mean_cost": 0.15749999999999997,
+      "mean_runtime_ms": 825.948543,
+      "runs": 3
+    },
+    "NSGA-II:light": {
+      "mean_cost": 0.17625168274592748,
+      "mean_runtime_ms": 758.0304096358543,
+      "runs": 357
+    },
+    "PSO:empty": {
+      "mean_cost": 0.105,
+      "mean_runtime_ms": 0.917249,
+      "runs": 3
+    },
+    "PSO:light": {
+      "mean_cost": 0.17806189185435,
+      "mean_runtime_ms": 0.8987883417366946,
+      "runs": 357
+    },
+    "exhaustive_optimum:empty": {
+      "mean_cost": 0.06999999999999999,
+      "mean_runtime_ms": 5.429298333333334,
+      "runs": 3
+    },
+    "exhaustive_optimum:light": {
+      "mean_cost": 0.17503471977026103,
+      "mean_runtime_ms": 5.402419173669468,
+      "runs": 357
+    },
+    "first_available:empty": {
+      "mean_cost": 0.06999999999999999,
+      "mean_runtime_ms": 0.000571,
+      "runs": 3
+    },
+    "first_available:light": {
+      "mean_cost": 0.1855252100840336,
+      "mean_runtime_ms": 0.0007889635854341736,
+      "runs": 357
+    }
+  },
+  "candidate_capacity": 2376,
+  "full_capacity_rejections": 0,
+  "interpretation": "Measured optimizer outcomes on parking allocation states observed during an executed SUMO/TraCI run. This is simulation evidence, not a physical facility trial; waiting is zero because live allocation does not measure queue delay.",
+  "iterations": 30,
+  "nsga2_parameters": {
+    "crossover_probability": 0.9,
+    "generations": 60,
+    "mutation_probability": 0.12,
+    "population_size": 48
+  },
+  "observed_simulation_end": 367.25,
+  "observed_simulation_start": 0.5,
+  "occupancy_levels": {
+    "empty": 1,
+    "light": 119
+  },
+  "optimizer_seed_strategy": "observed_allocation_seed + repeat_index",
+  "repeated_seeds_per_scenario": 3,
+  "scenario_count": 120,
+  "scenario_evidence_file": "sumo_observed_scenarios.jsonl",
+  "source": "executed_sumo_parking_allocations",
+  "success_failure_counts": {
+    "ACO": {
+      "full_capacity": 0,
+      "invalid": 0,
+      "success": 360
+    },
+    "GA": {
+      "full_capacity": 0,
+      "invalid": 0,
+      "success": 360
+    },
+    "NSGA-II": {
+      "full_capacity": 0,
+      "invalid": 0,
+      "success": 360
+    },
+    "PSO": {
+      "full_capacity": 0,
+      "invalid": 0,
+      "success": 360
+    },
+    "exhaustive_optimum": {
+      "full_capacity": 0,
+      "invalid": 0,
+      "success": 360
+    },
+    "first_available": {
+      "full_capacity": 0,
+      "invalid": 0,
+      "success": 360
+    }
+  },
+  "successful_scenario_repetitions": 360,
+  "sumo_config_sha256": "9b5959763f834ac3043b3bb7b73022b701f24471fc1281d7d8e8927cb6625b75",
+  "sumo_network_sha256": "97082f72f2f254c049bb26cf200e1bd2cfb951e60febfbcab8460df0599c546b",
+  "sumo_routes_sha256": "25a75b1217018bd9cb1ee9520808424b94b23035d496dc603d5bc5b0b5a13b0c",
+  "sumo_seed": 20261031,
+  "sumo_step_length_seconds": 0.25,
+  "sumo_version": "Eclipse SUMO sumo 1.28.0",
+  "weights": {
+    "congestion": 0.3,
+    "distance": 0.35,
+    "fairness": 0.15,
+    "waiting": 0.2
+  }
+}

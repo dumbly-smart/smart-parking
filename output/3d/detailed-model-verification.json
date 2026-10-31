@@ -1,0 +1,60 @@
+{
+  "passed": 41,
+  "checks": [
+    "Three distinct vehicle body types",
+    "Distinct paint colors",
+    "Detailed component templates",
+    "Three geometry detail levels",
+    "Four wheel assemblies and two articulated doors",
+    "Wheel spin matches distance and tire radius",
+    "Front axle steers independently",
+    "Opposed door hinge directions",
+    "Brake and reversing lamps respond",
+    "Right indicator follows positive steering",
+    "Stopped cars do not spin wheels",
+    "Lamps clear when control state clears",
+    "Door closes after parking phase",
+    "Gate boom opens at motor pivot",
+    "Gate boom closes",
+    "Ventilation rotors animate",
+    "Lift doors slide away from the opening",
+    "Mechanical animation switch pauses rotors",
+    "Inactive ramps retain steady marker lamps",
+    "Occupied ramp beacon sequence follows traffic state",
+    "Distant traffic is batched",
+    "Distant batches retain full multi-part vehicle geometry",
+    "Hidden floors are excluded from distant traffic",
+    "Nearby cars retain their articulated geometry",
+    "Parked cars use consolidated full-geometry batches",
+    "Material batching preserves every static vehicle triangle",
+    "Indexed geometry eliminates duplicate vertex processing",
+    "Batched accessories retain per-vertex color and lamp emission",
+    "Cars fully blocked by a concrete slab are culled",
+    "Floor inspection restores all parked cars",
+    "Open-side views conservatively retain parked cars",
+    "Distant traffic defers invisible articulated rigs",
+    "Close-up inspection creates wheels with continuous rotation",
+    "Reverse parking displacement agrees with vehicle facing throughout the maneuver",
+    "Vehicle stops before selecting reverse gear",
+    "Reverse maneuver finishes in the bay facing the aisle",
+    "entry boom opens before the car crosses its lane",
+    "exit boom opens before the car crosses its lane",
+    "Optional exit route starts at the occupied bay",
+    "Entry cars including mirrors clear both barrier cabinets",
+    "Exit cars including mirrors clear the center cabinet"
+  ],
+  "vehicle_parts": [
+    {
+      "type": "Sedan",
+      "components": 204
+    },
+    {
+      "type": "SUV",
+      "components": 207
+    },
+    {
+      "type": "Hatchback",
+      "components": 205
+    }
+  ]
+}

@@ -722,7 +722,7 @@ git commit -m "feat: prepare shared prediction splits"
 
 - [ ] **Step 1: Add README documentation**
 
-After the camera section, add `## Prediction preprocessing` explaining:
+Add `## Prediction preprocessing` explaining:
 
 ```markdown
 Prediction preprocessing reads persisted context, lifecycle, allocation, and

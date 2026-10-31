@@ -1,37 +1,35 @@
 {
-  "event_count": 8,
-  "generated_at_utc": "2026-10-20T18:57:26.262Z",
+  "event_count": 17,
+  "generated_at_utc": "2026-10-26T09:13:33.419Z",
   "metrics": {
     "api_transaction_success_rate": {
-      "count": 0,
-      "status": "NOT TESTED"
-    },
-    "camera_capture_latency_ms": {
-      "count": 0,
-      "status": "NOT TESTED"
-    },
-    "camera_capture_success_rate": {
-      "count": 0,
-      "status": "NOT TESTED"
-    },
-    "camera_processing_latency_ms": {
-      "count": 0,
-      "status": "NOT TESTED"
+      "rate": 1.0,
+      "status": "MEASURED",
+      "successes": 2,
+      "trials": 2
     },
     "entry_response_latency_ms": {
-      "count": 0,
-      "status": "NOT TESTED"
+      "count": 1,
+      "mean": 1431.0,
+      "median": 1431.0,
+      "p95": 1431.0,
+      "standard_deviation": 0.0,
+      "status": "MEASURED"
     },
     "exit_response_latency_ms": {
-      "count": 0,
-      "status": "NOT TESTED"
+      "count": 1,
+      "mean": 1220.0,
+      "median": 1220.0,
+      "p95": 1220.0,
+      "standard_deviation": 0.0,
+      "status": "MEASURED"
     },
     "free_heap_bytes": {
       "count": 8,
-      "mean": 274069.0,
-      "median": 292240.0,
-      "p95": 293416.0,
-      "standard_deviation": 26018.94981958891,
+      "mean": 237201.5,
+      "median": 237304.0,
+      "p95": 238352.0,
+      "standard_deviation": 1027.3693173760419,
       "status": "MEASURED"
     },
     "led_correctness_rate": {
@@ -43,12 +41,18 @@
       "status": "NOT TESTED"
     },
     "rfid_read_success_rate": {
-      "count": 0,
-      "status": "NOT TESTED"
+      "rate": 1.0,
+      "status": "MEASURED",
+      "successes": 2,
+      "trials": 2
     },
     "servo_command_delay_ms": {
-      "count": 0,
-      "status": "NOT TESTED"
+      "count": 4,
+      "mean": 4611.0,
+      "median": 4550.0,
+      "p95": 6144.0,
+      "standard_deviation": 1578.337944379044,
+      "status": "MEASURED"
     },
     "wifi_recovery_seconds": {
       "count": 0,

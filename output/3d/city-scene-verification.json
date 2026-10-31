@@ -1,0 +1,26 @@
+{
+  "passed": 16,
+  "checks": [
+    "City view shows the complete 101-building district",
+    "City camera fits district at desktop size",
+    "Detailed instanced city and all signal heads exist",
+    "Park pedestrians walk",
+    "Mechanical switch pauses walking and fountain motion",
+    "City scenery can be hidden",
+    "City view restores scenery",
+    "Basement inspection hides surrounding buildings",
+    "Five live bay focus remains isolated",
+    "TraCI publishes all 16 signal controllers",
+    "All visible signal heads match native controlled links",
+    "Signal lens instance color matches its live state",
+    "City cars are excluded from garage floor counters",
+    "Garage marker returns to building camera",
+    "Right-drag panning preserves city mode",
+    "Mobile city dashboard has no horizontal page overflow"
+  ],
+  "city": {
+    "buildings": 101,
+    "components": 88485,
+    "signal_heads": 64
+  }
+}

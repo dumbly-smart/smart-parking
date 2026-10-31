@@ -47,9 +47,15 @@ class EntryResponse(BaseModel):
     rfid_uid: str
     slot_id: int = Field(ge=1)
     slot_name: str
-    optimizer: Literal["ga", "pso", "aco"]
+    optimizer: str
     allocation_cost: float = Field(ge=0, le=1)
     entered_at: str
+    first_hour_rate_paise: int = 5000
+    additional_hour_rate_paise: int = 4000
+    grace_minutes: int = 10
+    daily_cap_paise: int = 40000
+    amount_due_paise: int = 0
+    receipt_url: str = ""
     gate_action: Literal["open"] = "open"
 
 
@@ -61,6 +67,14 @@ class ExitResponse(BaseModel):
     slot_id: int = Field(ge=1)
     slot_name: str
     exited_at: str
+    entered_at: str = ""
+    duration_seconds: int = 0
+    amount_paid_paise: int = 0
+    first_hour_rate_paise: int = 5000
+    additional_hour_rate_paise: int = 4000
+    grace_minutes: int = 10
+    daily_cap_paise: int = 40000
+    receipt_url: str = ""
     gate_action: Literal["open"] = "open"
 
 
@@ -75,6 +89,8 @@ class ParkingSlotStatus(BaseModel):
     updated_at: str
     active_session_id: int | None = None
     rfid_uid: str | None = None
+    entered_at: str | None = None
+    amount_due_paise: int | None = None
 
 
 class ParkingStatusResponse(BaseModel):

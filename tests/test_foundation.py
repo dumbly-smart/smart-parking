@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import sqlite3
 from pathlib import Path
 
@@ -15,7 +14,6 @@ from backend.app.main import create_app
 EXPECTED_TABLES = {
     "allocations",
     "context_samples",
-    "occupancy_events",
     "optimizer_runs",
     "parking_events",
     "parking_sessions",
@@ -37,14 +35,6 @@ CREATE TABLE parking_slots (
     updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
 
-CREATE TABLE occupancy_events (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    slot_id INTEGER NOT NULL REFERENCES parking_slots(id),
-    occupied INTEGER NOT NULL CHECK (occupied IN (0, 1)),
-    confidence REAL CHECK (confidence BETWEEN 0 AND 1),
-    source TEXT NOT NULL,
-    observed_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
-);
 """
 
 LEGACY_CONTEXT_SAMPLES_SCHEMA = """
@@ -83,29 +73,11 @@ def make_settings(tmp_path: Path) -> Settings:
 
 def make_settings_for_ids(tmp_path: Path, slot_ids: list[int]) -> Settings:
     config_path = tmp_path / "parking.yaml"
-    roi_path = tmp_path / "rois.json"
     write_config(config_path, slot_ids)
-    roi_path.write_text(
-        json.dumps(
-            {
-                "heuristic": {
-                    "edge_threshold": 0.12,
-                    "minimum_confidence": 0.70,
-                    "required_consecutive_frames": 3,
-                },
-                "slots": [
-                    {"slot_id": slot_id, "x": 0, "y": 0, "width": 1, "height": 1}
-                    for slot_id in slot_ids
-                ],
-            }
-        ),
-        encoding="utf-8",
-    )
     return Settings(
         mode="demo",
         database_url=f"sqlite:///{tmp_path / 'parking.db'}",
         parking_config_path=config_path,
-        roi_config_path=roi_path,
     )
 
 
@@ -182,12 +154,6 @@ def test_database_migrates_legacy_slot_constraint_without_losing_references(
             """,
             [(slot_id, f"S{slot_id}", 0.5, f"zone-{slot_id}") for slot_id in range(1, 6)],
         )
-        connection.execute(
-            """
-            INSERT INTO occupancy_events (slot_id, occupied, confidence, source)
-            VALUES (1, 1, 0.95, 'legacy-camera')
-            """
-        )
 
     database.initialize(settings.parking.slots)
 
@@ -195,12 +161,8 @@ def test_database_migrates_legacy_slot_constraint_without_losing_references(
         sql = connection.execute(
             "SELECT sql FROM sqlite_master WHERE name = 'parking_slots'"
         ).fetchone()[0]
-        event = connection.execute(
-            "SELECT slot_id, occupied FROM occupancy_events"
-        ).fetchone()
         foreign_key_errors = connection.execute("PRAGMA foreign_key_check").fetchall()
     assert "BETWEEN 1 AND 5" not in sql
-    assert event == (1, 1)
     assert foreign_key_errors == []
     assert database.slot_count() == 6
 

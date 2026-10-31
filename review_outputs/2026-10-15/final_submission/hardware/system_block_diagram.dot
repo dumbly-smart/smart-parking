@@ -1,0 +1,21 @@
+digraph system {
+  graph [rankdir=LR, bgcolor=white, pad=0.25, nodesep=0.35, ranksep=0.6, fontname="Helvetica", labelloc=t, label="Smart Parking System — RFID hardware and software blocks", fontsize=16];
+  node [shape=box, style="solid", color=black, fontcolor=black, fontname="Helvetica", fontsize=10, margin="0.12,0.08", penwidth=1];
+  edge [color=black, fontcolor=black, fontname="Helvetica", fontsize=9, arrowsize=0.7, penwidth=1];
+  controller [label="ESP32 DevKit controller\nRC522 RFID · SSD1306 OLED\n5 occupancy LEDs · SG90 signal"];
+  wifi [shape=ellipse, label="Private 2.4 GHz Wi-Fi LAN"];
+  subgraph cluster_server { label="Local computer"; color=black; style=solid;
+    api [label="FastAPI\nRFID lifecycle · allocation · status"];
+    db [shape=cylinder, label="SQLite\nslots · sessions · events"];
+    prediction [label="Forecasting\nLSTM · GRU · Transformer"];
+    allocation [label="Slot allocation\nFirst available · GA · PSO · ACO · NSGA-II · exact reference"];
+    api -> db [label="transactional state"];
+    api -> prediction [label="history"];
+    api -> allocation [label="free slots"];
+  }
+  browser [label="Browser dashboard\n3D lot · event stream · status"];
+  controller -> wifi [dir=both, label="JSON API\nentry/exit, status, event reports"];
+  wifi -> api [dir=both, label="local network"];
+  api -> browser [dir=both, label="dashboard and APIs"];
+  api -> controller [label="slot state and authorization"];
+}

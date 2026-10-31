@@ -21,12 +21,12 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Inches, Pt, RGBColor
-from PIL import Image, ImageOps
+from PIL import Image
 
 REVIEW = Path("review_outputs/2026-10-15")
-DATASET_URL = "https://drive.google.com/file/d/1-bgCGNuCgbhWTbKyxnMlLpOQH1s3lxSZ/view?usp=drivesdk"
 DATASET_PUBLIC_URL = "https://github.com/dumbly-smart/smart-parking/raw/5b480d1/review_outputs/2026-10-15/dataset/parking_dataset.zip"
-MODELS_URL = "https://drive.google.com/file/d/1I1ECMeYlJT9-oop4Bh-Qedgti9Kds6lj/view?usp=drivesdk"
+PROJECT_GITHUB_URL = "https://github.com/dumbly-smart/smart-parking"
+PROJECT_DRIVE_FOLDER_URL = "https://drive.google.com/drive/folders/1dXCsveCgbfZuCycWEzJs6WHaMlbOEg-G"
 
 
 def _read_csv(path: Path) -> list[dict[str, str]]:
@@ -96,7 +96,7 @@ def _add_table(
 def _add_caption(document: Document, text: str) -> None:
     paragraph = document.add_paragraph(style="Caption")
     paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    paragraph.paragraph_format.keep_with_next = True
+    paragraph.paragraph_format.keep_with_previous = True
     paragraph.add_run(text)
 
 
@@ -113,7 +113,9 @@ def _add_figure(document: Document, figures: Path, filename: str, caption: str) 
         return False
     paragraph = document.add_paragraph()
     paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    paragraph.add_run().add_picture(str(path), width=Inches(6.25))
+    paragraph.paragraph_format.keep_with_next = True
+    width = 4.1 if filename == "parking_transaction_flow.png" else 6.25
+    paragraph.add_run().add_picture(str(path), width=Inches(width))
     _add_caption(document, caption)
     return True
 
@@ -206,7 +208,7 @@ def _style_document(document: Document) -> None:
     document.styles["Caption"].font.italic = True
     document.styles["Caption"].font.color.rgb = RGBColor(0, 0, 0)
     header = section.header.paragraphs[0]
-    header.text = "FINAL PROJECT REPORT  ·  20 OCTOBER 2026"
+    header.text = "FINAL PROJECT REPORT  ·  31 OCTOBER 2026"
     header.alignment = WD_ALIGN_PARAGRAPH.RIGHT
     for run in header.runs:
         run.font.name = "Times New Roman"
@@ -250,6 +252,55 @@ def _add_model_results_table(document: Document, root: Path) -> list[dict[str, s
     return model_rows
 
 
+def _prepare_additional_figures(repository_root: Path, figures: Path) -> None:
+    """Render editable diagrams and prepare the dashboard capture."""
+    hardware_docs = repository_root / "docs/hardware"
+    for stem in ("parking_transaction_flow", "parking_session_state"):
+        source = hardware_docs / f"{stem}.dot"
+        subprocess.run(
+            ["dot", "-Tsvg", str(source), "-o", str(hardware_docs / f"{stem}.svg")],
+            check=True,
+        )
+        subprocess.run(
+            ["dot", "-Tpng", "-Gdpi=180", str(source), "-o", str(figures / f"{stem}.png")],
+            check=True,
+        )
+
+    summary_path = repository_root / "output/hardware/hardware_summary.json"
+    if summary_path.is_file():
+        metrics = json.loads(summary_path.read_text(encoding="utf-8")).get("metrics", {})
+        samples = [
+            ("Entry API", metrics.get("entry_response_latency_ms", {})),
+            ("Exit API", metrics.get("exit_response_latency_ms", {})),
+            ("Gate command", metrics.get("servo_command_delay_ms", {})),
+        ]
+        measured = [(name, values["mean"]) for name, values in samples if values.get("status") == "MEASURED"]
+        if measured:
+            import matplotlib
+
+            matplotlib.use("Agg")
+            import matplotlib.pyplot as plt
+
+            figure, axis = plt.subplots(figsize=(7.0, 3.4))
+            bars = axis.bar(
+                [name for name, _ in measured],
+                [value for _, value in measured],
+                color=("#2563EB", "#0F766E", "#F59E0B")[: len(measured)],
+                edgecolor="black",
+                linewidth=0.7,
+            )
+            axis.set_ylabel("Mean event latency (ms)")
+            axis.set_title("Observed controller/API timing")
+            axis.grid(axis="y", color="0.82", linewidth=0.5)
+            axis.set_axisbelow(True)
+            axis.spines[["top", "right"]].set_visible(False)
+            for bar, (_, value) in zip(bars, measured, strict=True):
+                axis.text(bar.get_x() + bar.get_width() / 2, value, f"{value:.0f}", ha="center", va="bottom", fontsize=8)
+            figure.tight_layout()
+            figure.savefig(figures / "hardware_timing_comparison.png", dpi=180, facecolor="white")
+            plt.close(figure)
+
+
 def _add_optimizer_results_table(document: Document, root: Path) -> list[dict[str, str]]:
     optimizer_rows = _read_csv(root / REVIEW / "optimization_results/optimizer_comparison.csv")
     _add_table_caption(document, "Table 6. Allocation performance across all repeated runs")
@@ -282,7 +333,64 @@ def build_report(
     figures.mkdir(parents=True, exist_ok=True)
     for source in source_figures.glob("*.png"):
         with Image.open(source) as image:
-            ImageOps.grayscale(image).save(figures / source.name)
+            image.convert("RGB").save(figures / source.name)
+    ml_figures = repository_root / REVIEW / "ml_results/figures"
+    for filename in (
+        "actual_vs_predicted.png",
+        "gru_loss.png",
+        "latency_comparison.png",
+        "lstm_loss.png",
+        "mae_comparison.png",
+        "prediction_error_distribution.png",
+        "rmse_comparison.png",
+        "transformer_loss.png",
+    ):
+        source = ml_figures / filename
+        if source.is_file():
+            with Image.open(source) as image:
+                image.convert("RGB").save(figures / filename)
+    benchmark_figures = repository_root / REVIEW / "optimization_results/figures"
+    for filename in (
+        "average_allocation_cost.png",
+        "execution_time.png",
+        "cost_by_occupancy.png",
+        "optimality_gap_distribution.png",
+        "objective_components.png",
+    ):
+        source = benchmark_figures / filename
+        if source.is_file():
+            with Image.open(source) as image:
+                image.save(figures / filename)
+    architecture_image = repository_root / "docs/hardware/system_architecture.png"
+    if architecture_image.is_file():
+        with Image.open(architecture_image) as image:
+            image.convert("RGB").save(figures / "current_system_architecture.png")
+    _prepare_additional_figures(repository_root, figures)
+    screenshot_sources = {
+        name: name
+        for name in (
+            "city_district_overview.png",
+            "six_floor_garage.png",
+            "first_person_route.png",
+            "parking_navigation_map.png",
+        )
+    }
+    for output_name, source_name in screenshot_sources.items():
+        source = source_figures / source_name
+        if not source.is_file():
+            raise FileNotFoundError(f"required current UI evidence is missing: {source}")
+        with Image.open(source) as image:
+            image.convert("RGB").save(figures / output_name)
+    for filename in (
+        "hardware_overview.png",
+        "rfid_reader_closeup.png",
+        "controller_board_front.png",
+        "controller_wiring_detail.png",
+        "hardware_dashboard_evidence.png",
+        "optimizer_comparison.png",
+        "dashboard_capture.png",
+    ):
+        (figures / filename).unlink(missing_ok=True)
     metadata = json.loads(
         (repository_root / REVIEW / "dataset/dataset_metadata.json").read_text(encoding="utf-8")
     )
@@ -291,6 +399,10 @@ def build_report(
             encoding="utf-8"
         )
     )
+    optimizer_metrics = {
+        row["algorithm"]: row
+        for row in _read_csv(repository_root / REVIEW / "optimization_results/optimizer_comparison.csv")
+    }
     model_rows = _read_csv(repository_root / REVIEW / "ml_results/model_comparison.csv")
     models = {row["model"]: row for row in model_rows}
     hardware_validation_path = repository_root / "output/hardware/controller_validation.json"
@@ -305,6 +417,18 @@ def build_report(
         if hardware_summary_path.exists()
         else None
     )
+    hardware_metrics = hardware_summary.get("metrics", {}) if hardware_summary else {}
+    rfid_metric = hardware_metrics.get("rfid_read_success_rate", {})
+    api_metric = hardware_metrics.get("api_transaction_success_rate", {})
+    entry_metric = hardware_metrics.get("entry_response_latency_ms", {})
+    exit_metric = hardware_metrics.get("exit_response_latency_ms", {})
+    gate_metric = hardware_metrics.get("servo_command_delay_ms", {})
+    if (
+        rfid_metric.get("status") == "MEASURED"
+        and api_metric.get("status") == "MEASURED"
+        and (entry_metric.get("mean") is None or exit_metric.get("mean") is None)
+    ):
+        raise ValueError("measured RFID transactions require entry and exit latency samples")
     document = Document()
     _style_document(document)
 
@@ -322,95 +446,113 @@ def build_report(
     authors = document.add_paragraph()
     authors.alignment = WD_ALIGN_PARAGRAPH.CENTER
     authors.add_run(
-        "Akil\nRegistration number: 25BCE2777\nInstitution: [Enter institution]\n"
-        "Course: [Enter course]\nFaculty / guide: [Enter name]\nFinal project report · 20 October 2026"
+        "Akil · 25BCE2777\nJayaprakash V · 25BCE2766\nInstitution: VIT Vellore (vit.ac.in)\n"
+        "Course: Embedded System Architecture\nFaculty / guide: Vivek Rajpoot\nUpdated project report · 31 October 2026"
     )
     authors.paragraph_format.space_before = Pt(28)
     document.add_page_break()
 
     _heading(document, "Abstract")
     abstract = (
-        "Parking guidance requires occupancy, reliable vehicle records, and a rule for choosing among "
-        "free spaces. This project presents a five-space smart-parking prototype integrating RFID session handling, camera "
-        "occupancy processing, slot allocation, short-horizon forecasting, and a browser dashboard. A FastAPI service and "
-        "SQLite database coordinate state. ESP32 controller firmware reads RFID tags and requests entry or exit decisions; "
-        "ESP32-CAM firmware serves JPEG captures to a Python ingestion process. Forecast models run on the server, keeping "
-        "neural inference outside the microcontrollers. Evaluation uses a synthetic timeline of 4,032 five-minute intervals "
-        "with 27 features. LSTM, GRU, and temporal Transformer regressors share a 12-step lookback, one-step horizon, "
-        "chronological 70/15/15 split, and training-only scaling. On the synthetic test partition, GRU obtains MAE 0.098055 "
-        "and RMSE 0.117862; persistence obtains MAE 0.120875 and RMSE 0.169173. The allocation study evaluates five policies "
-        "across 120 scenarios with three seeded repetitions. Exact enumeration and the genetic algorithm both achieve mean "
-        "objective cost 0.378194; PSO and ACO have mean optimality gaps 0.048264 and 0.003586. These values describe "
-        "generated observations and five-slot software simulations, not field performance. Automated tests cover lifecycle, "
-        "camera input, occupancy transitions, and prediction behavior; both firmware targets have compile evidence. "
-        "The user reports that the assembled tabletop hardware works; this qualitative report was not captured as a serial trial log. Earlier RC522 diagnostics recorded invalid SPI responses before that report. RFID success rates, camera accuracy, OLED/LED correctness, servo timing, and power remain without measured trials. The camera detector is an edge-density "
-        "heuristic requiring calibrated regions and real-scene validation. This report documents architecture, proposed wiring, "
-        "implementation, measurements, limitations, and bench procedures. The prototype demonstrates an auditable software "
-        "integration path; deployment conclusions require real data, occupancy labels, electrical checks, and supervised "
-        "hardware trials."
+        "Parking guidance needs current availability, vehicle records, and a clear rule for assigning spaces. "
+        "This report describes a five-space prototype built around an ESP32, RFID access, a FastAPI service, SQLite, and a "
+        "dashboard. A space becomes occupied after the server confirms an RFID entry and becomes free after a confirmed exit. "
+        "Forecasting runs on the host computer in the current design. The synthetic dataset contains 4,032 five-minute observations and 27 features. LSTM, GRU, "
+        "and Transformer regressors share a 12-step lookback, a one-step horizon, a chronological 70/15/15 split, and "
+        "training-only scaling. On the synthetic test partition, GRU records MAE 0.098055 and RMSE 0.117862; persistence "
+        "records 0.120875 and 0.169173, respectively. GA, PSO, ACO, and NSGA-II were evaluated with first-available and "
+        "exhaustive references across "
+        f"on {optimizer_summary['scenario_count']} SUMO-observed states, {optimizer_summary['repeated_seeds_per_scenario']} repeats, and "
+        f"{optimizer_summary['candidate_capacity']:,} bays. NSGA-II mean cost was "
+        f"{float(optimizer_metrics['NSGA-II']['mean_cost']):.6f}, with mean optimality gap "
+        f"{float(optimizer_metrics['NSGA-II']['mean_optimality_gap']):.6f}; exhaustive search is the exact one-slot reference. "
+        "SUMO results do not represent field performance. Software checks cover API lifecycle, failures, allocation, and inference. "
+        "Controller firmware was compiled, flashed, and hash-verified. In two post-rewire tabletop trials, the reader detected "
+        "both scans and the API accepted both transactions (HTTP 200). Entry and exit response times were 1,431 ms and "
+        "1,220 ms. Server status showed S1 occupied and then free. Physical LED output, servo travel, current draw, and Wi-Fi "
+        "recovery were not measured. The prototype and its synthetic data do not establish independent real-lot performance in the field. Larger trials and measured occupancy data are "
+        "needed before deployment performance can be assessed independently."
     )
     _paragraph(document, abstract)
     document.paragraphs[-1].paragraph_format.line_spacing = 1.15
     document.paragraphs[-1].paragraph_format.space_after = Pt(12)
     _paragraph(
         document,
-        "Keywords: smart parking, Internet of Things, RFID, camera occupancy, allocation optimization, occupancy forecasting, LSTM, GRU, Transformer",
+        "Keywords: smart parking, Internet of Things, RFID, allocation optimization, occupancy forecasting, LSTM, GRU, Transformer",
     )
     document.add_page_break()
 
     _heading(document, "1. Introduction")
     _paragraph(
         document,
-        "Parking search is a coordination problem: drivers need current availability, operators need a consistent record of arrivals and departures, and a guidance policy must select from the spaces that remain free. Sensors and networked systems can make that state visible, but the quality of a result depends on the sensing method, communication reliability, and whether the allocation and forecasting methods are evaluated against appropriate baselines [1].",
+        "Finding a parking space involves several linked decisions. Drivers need current availability, operators need a dependable arrival and departure record, and the system needs a rule for choosing among free spaces. Recent reviews identify data quality, forecast horizon, sensing method, and transfer between sites as recurring evaluation concerns [1], [2].",
     )
     _paragraph(
         document,
-        "This project separates device I/O from server computation. An ESP32 controller reads an RFID tag and calls the existing vehicle lifecycle API. A camera module can provide JPEG snapshots to a Python polling service; that service forwards valid frames to the backend's existing occupancy endpoint. FastAPI coordinates persistence, occupancy, allocation, prediction, and the browser dashboard. TensorFlow/Keras forecasting runs on the server; neither the ESP32 controller nor the ESP32-CAM performs neural inference.",
+        "The design assigns local input/output tasks to an ESP32 and sends parking operations to a host computer. The controller reads an RFID tag and calls the vehicle-lifecycle API. FastAPI manages session records, slot allocation, forecasts, and dashboard data, while TensorFlow/Keras runs the forecasting models on the host. The ESP32 does not run neural inference.",
     )
     _paragraph(
         document,
-        "The software contributions are (i) an idempotent API lifecycle and shared allocation objective, (ii) a privacy-conscious simulated time-series dataset and comparable neural forecasting experiment, (iii) a reproducible GA/PSO/ACO benchmark with deterministic and exact references, and (iv) a hardware integration path that fails closed when allocation cannot be confirmed. The user reports that the assembled tabletop hardware works. Since no post-rewire trial logs or quantitative measurements were captured, the report distinguishes that qualitative user report from measured results and provides only source/specification-based engineering estimates where defensible.",
+        "This work contributes four connected pieces: an idempotent vehicle API with a shared allocation objective; a privacy-safe synthetic time series for comparing neural forecasts; a GA, PSO, ACO, and NSGA-II benchmark replayed on parking states observed during an executed SUMO/TraCI run, with first-available and exact references; and controller firmware that keeps the gate closed unless the server confirms an allocation. In the post-rewire tabletop trial, both RFID scans led to successful entry and exit transactions. That evidence shows the workflow operating, but the two trials are too few to characterize reliability. Physical outputs that were not directly observed are reported separately.",
     )
     _paragraph(
         document,
-        "The Arduino framework on the ESP32 is suited to deterministic sensor polling and actuator control, while the host computer provides the memory and processing environment for training and running the neural regressors. This split keeps the microcontroller responsible for bounded I/O and authorization checks and leaves data-intensive inference on the server.",
+        "The Arduino framework gives the ESP32 a straightforward way to poll the RFID reader and control local outputs. Training and running the neural regressors requires more memory and processing capacity, so those tasks remain on the host computer. The split keeps device behavior bounded and leaves forecasting with the server.",
     )
 
     _heading(document, "2. Literature Survey")
     _paragraph(
         document,
-        "Prior work spans sensing, RFID-mediated access, vision datasets, forecasting, and allocation. The comparison below distinguishes the evaluated scope of each source from the narrower five-slot simulated experiments in this project.",
+        "Recent parking studies address occupancy forecasts, networked access, and space allocation. Table 1 summarizes eight studies published from 2023 to 2026 and relates their methods to this project. Together, they motivate two focused evaluations here: an integrated five-space physical prototype and a reproducible allocation comparison across the 2,376 modeled garage bays, alongside prediction experiments using synthetic time-series data.",
     )
     literature = [
         [
-            "de Almeida et al. [14]",
-            "2022 · Expert Systems with Applications",
-            "Systematic review of public datasets and computer-vision methods for parking-lot management.",
-            "Finds dataset dependence and weak evaluation protocols; motivates explicit limits on this project's heuristic and absence of labeled field images.",
+            "Channamallu et al. [1]",
+            "2023 · Transportation Research Procedia",
+            "Reviews 108 studies on occupancy prediction, including statistical, recurrent and hybrid approaches.",
+            "Synthesizes modeling families but does not validate this project's five-slot integration or synthetic test set.",
         ],
         [
-            "Lee et al. [15]",
-            "2022 · Microprocessors and Microsystems",
-            "Reviews edge-enabled smart parking with emphasis on security, energy use, sensors, and communication.",
-            "Highlights security and energy considerations; this prototype's HTTP endpoints remain unauthenticated and its power is unmeasured.",
+            "Bilotta et al. [2]",
+            "2023 · IEEE Access",
+            "Uses convolutional bidirectional LSTMs and feature-relevance analysis for free-slot forecasting from real garages.",
+            "Provides a real-data comparator; its garage observations do not establish generalization of the synthetic project data.",
         ],
         [
-            "Feng et al. [16]",
-            "2022 · Complex & Intelligent Systems",
-            "Uses a dual ConvLSTM and dense convolution network for zone-wise availability prediction over public-lot data.",
-            "Models spatial relationships across lots and reports real-data experiments; the present five-slot regression uses synthetic data and no spatial graph.",
-        ],
-        [
-            "Zhang et al. [17]",
+            "Zhang et al. [3]",
             "2024 · ISPRS International Journal of Geo-Information",
-            "Compares TCN and LSTM and proposes MAT-LSTM for parking-space availability using real and synthetic datasets.",
-            "Supports controlled comparisons across data sources; it does not validate the architectures or synthetic generator used in this project.",
+            "Compares TCN and LSTM and proposes MAT-LSTM for parking-space availability.",
+            "Uses real and synthetic datasets; the present evaluation uses its own synthetic generator and does not claim cross-site validation.",
         ],
         [
-            "Enríquez et al. [18]",
+            "Enríquez et al. [4]",
             "2024 · Applied System Innovation",
-            "Studies AdaBoost parking prediction with real parking-flow data and simulated fog/cloud latency.",
-            "Shows the distinction between measured prediction and simulated network latency; this project reports server-side model timing only.",
+            "Evaluates parking-flow prediction and fog/cloud response through a simulated deployment setup.",
+            "Separates model and network timing; this report likewise distinguishes server inference from physical controller measurements.",
+        ],
+        [
+            "Kuang et al. [6]",
+            "2025 · Advanced Engineering Informatics",
+            "Meta-learning model fuses spatial relationships, temporal history and weather across 58 parking lots.",
+            "Addresses regional heterogeneity; this five-slot implementation has no cross-lot graph or measured weather data.",
+        ],
+        [
+            "Kaltenbrunner et al. [7]",
+            "2025 · EPJ Data Science",
+            "Fits an explainable aggregate occupancy model to eight real park-and-ride facilities.",
+            "Shows a compact real-data alternative to deep models; the current neural comparison is limited to synthetic data.",
+        ],
+        [
+            "Vakrinou et al. [9]",
+            "2026 · International Journal of Transportation Science and Technology",
+            "Compares LSTM-attention and Transformer models for short- and long-term prediction at multiple Athens facilities.",
+            "Finds horizon-dependent model strengths; this project reports only a one-step five-minute target.",
+        ],
+        [
+            "Ostadi et al. [10]",
+            "2026 · Datenbank-Spektrum",
+            "Evaluates horizon-aware blended forecasting with sensor data from two urban parking facilities.",
+            "Highlights that one predictor may not lead at every horizon; this project compares models at one shared horizon.",
         ],
     ]
     _add_table_caption(document, "Table 1. Related studies and their relevance to this project")
@@ -422,17 +564,17 @@ def build_report(
     )
     _paragraph(
         document,
-        "Recent work emphasizes dataset-independent vision evaluation [14], security and energy concerns in edge deployments [15], spatial forecasting across zones [16], recurrent and convolutional model comparisons [17], and prediction with fog/cloud architectures [18]. Foundational model formulations used here are LSTM [6], GRU [7], and self-attention [8]. These publications define methods and identify evaluation needs; they do not validate this project's synthetic corpus or hardware. The gap addressed here is a small, reproducible integration with matched model inputs and explicit simulation limits, rather than a new state-of-the-art claim.",
+        "Reported forecasting results depend on the horizon, input features, and whether the data comes from an operating facility [2]–[7], [9], [10]. Other IoT studies combine classification or prediction with optimization, but use different targets and objectives [5], [8]. This report addresses a narrower engineering question: can the models and allocation policies be compared on shared inputs while keeping software results distinct from the small hardware trial? The recurrent and self-attention methods used here build on [11]–[13].",
     )
     _paragraph(
         document,
-        "Across these strands, prior work commonly emphasizes a particular sensing modality, city-scale prediction task, or optimization formulation. The present contribution is an integrated, inspectable prototype and a controlled comparison on its five-slot objective, with exact enumeration used to test whether metaheuristics add value at this scale. The contribution is engineering and evaluation of this system instance; it is not a new optimization algorithm or a field-validated occupancy model.",
+        "The reviewed work ranges from city-scale forecasts to specific allocation formulations. This project pairs an inspectable five-space physical prototype with a six-level, 2,376-bay simulated garage. The controlled allocation comparison evaluates each heuristic and NSGA-II against exhaustive enumeration over all 2,376 modeled candidates. The physical prototype remains five spaces; the larger garage and its candidate objectives are simulated and do not validate real facility demand or traffic.",
     )
 
     _heading(document, "3. Problem Statement and Objectives")
     _paragraph(
         document,
-        "The system must keep a consistent record of which configured parking spaces are occupied, associate a vehicle's entry and exit with idempotent operations, select only a free slot, and expose current and short-horizon occupancy through a dashboard/API. A camera-based heuristic may suggest occupancy transitions, but its output is confidence-filtered and temporally smoothed before persistence. A forecast is a regression estimate over aggregated server history, not a direct image classifier.",
+        "The system must maintain a consistent record of the five configured spaces, associate each entry and exit with an idempotent operation, and assign only a free space. It exposes current status and a short-horizon forecast through the API and dashboard. A space counts as occupied while its RFID vehicle session is active; the forecast is a regression estimate based on aggregated server history.",
     )
     _add_table_caption(document, "Table 2. Objectives, completion status, and available evidence")
     _add_table(
@@ -441,15 +583,15 @@ def build_report(
         [
             [
                 "Identify configured-slot occupancy",
-                "Software implemented: JPEG ROI edge-density detector, confidence filter, consecutive-frame smoothing, SQLite persistence. Real-camera accuracy is not measured.",
+                "Implemented: server-confirmed RFID entry and exit update slot occupancy transactionally in SQLite.",
             ],
             [
                 "RFID entry/exit",
-                "Backend API complete and tested; controller firmware implements polling, idempotent retry and response validation. Physical reader tests remain open.",
+                "Implemented end-to-end; the latest tabletop trial recorded 2/2 tag reads and 2/2 HTTP 200 entry/exit transactions. Two trials do not establish reliability.",
             ],
             [
-                "Compare GA, PSO, ACO allocation",
-                "Complete: 120 scenarios, three repeat seeds, common objective, first-available and exhaustive references.",
+                "Compare GA, PSO, ACO, and NSGA-II allocation",
+                f"Complete: {optimizer_summary['scenario_count']} SUMO-observed allocation states × {optimizer_summary['repeated_seeds_per_scenario']} optimizer repeats, {optimizer_summary['candidate_capacity']:,} candidate bays, common objective, first-available and exhaustive references.",
             ],
             [
                 "Forecast next-interval occupancy",
@@ -457,11 +599,11 @@ def build_report(
             ],
             [
                 "Dashboard visibility",
-                "Existing dashboard and API are implemented; browser screenshot and physical-device indicators were not captured in this environment.",
+                "Dashboard and APIs are implemented; an actual browser capture is included. The physical RFID rig has five sensor spaces; the current dashboard also tracks the 2,376-bay garage emulation and displays live optimizer comparisons.",
             ],
             [
                 "Low-cost hardware integration",
-                "Firmware projects compile and connection design is documented. A generic CH340 adapter was detected but its target is unknown; no peripheral behavior is verified.",
+                "Photographs document the tabletop ESP32/RC522/breadboard/LED assembly. Serial logs document two RFID transactions; visual LED output and physical servo motion remain unverified.",
             ],
         ],
     )
@@ -469,43 +611,55 @@ def build_report(
     _heading(document, "4. System Architecture")
     _paragraph(
         document,
-        "The backend remains the system coordinator. Camera capture and RFID access use distinct flows so a camera outage does not invent a vehicle operation and a network failure cannot trigger a gate opening. SQLite is the local system of record. The dashboard consumes backend routes rather than reading device state directly.",
+        "The backend coordinates each parking transaction. It writes the RFID session and slot assignment together, and the controller opens the demonstration gate only after it confirms the committed result. SQLite stores the authoritative state. The dashboard reads that same state through backend routes rather than querying the controller directly.",
     )
     _add_figure(
         document,
         figures,
         "system_block_diagram.png",
-        "Figure 1. System data flow; compute-intensive vision aggregation, allocation, forecasting and persistence run on the server.",
+        "Figure 1(a). RFID transaction data flow, allocation, forecasting and persistence run on the server.",
+    )
+    _add_figure(
+        document,
+        figures,
+        "parking_transaction_flow.png",
+        "Figure 1(b). RFID transaction and allocation algorithm, including fail-closed error handling.",
+    )
+    _add_figure(
+        document,
+        figures,
+        "parking_session_state.png",
+        "Figure 1(c). Vehicle-session state diagram; timeout recovery reuses the persisted idempotency key.",
     )
     _paragraph(
         document,
-        "Camera flow: ESP32-CAM GET /capture → camera_ingest validates size, MIME type and JPEG decode → multipart POST /api/camera/occupancy → configured ROI detection → confidence and consecutive-frame checks → persisted accepted occupancy transition → status/dashboard and feature aggregation. Controller flow: RC522 UID → GET /api/parking/status → POST /api/vehicle/entry or /api/vehicle/exit with a persisted idempotency key → response and subsequent status validation → OLED/LED update and one gate cycle. A timeout preserves the pending key and leaves the gate closed until confirmation.",
+        "Figures 1(a)–1(c) show the embedded hardware and software data flow, RFID request algorithm, and vehicle-session state transitions. Controller flow: RC522 UID → GET /api/parking/status → POST /api/vehicle/entry or /api/vehicle/exit with a persisted idempotency key → response and subsequent status validation → OLED/LED update and one gate cycle. A timeout preserves the pending key and leaves the gate closed until confirmation.",
     )
     _paragraph(
         document,
-        "Forecast flow uses the same PreparedDataset contract for each model. The runtime predictor loads compatible, hash-checked model artifacts and uses a deterministic fallback when unavailable. Allocation uses configured weights and excludes occupied candidates. The small five-slot exhaustive benchmark computes the exact single-slot minimum for each scenario.",
+        "Forecast flow uses the same PreparedDataset contract for each model. The runtime predictor loads compatible, hash-checked model artifacts and uses a deterministic fallback when unavailable. Allocation uses configured weights and excludes occupied candidates. The optimizer benchmark captures the actual allocation request at each SUMO/TraCI parking admission, including all 2,376 candidate bays, their live occupancy, zone congestion, configured distance values, and identity-based fairness values. Each algorithm is replayed on the same captured request, and exhaustive search computes the exact single-slot reference for that observed state. Full candidate snapshots are preserved in the submission evidence.",
     )
     _paragraph(
         document,
-        "The backend exposes separate routes for vehicle entry/exit, parking status, image occupancy, allocation benchmarks, forecasts, and dashboard data. The database is the authoritative state shared by those services. Camera-derived observations update occupancy only after the detector's configured confidence and temporal conditions are met; they do not create or close an RFID vehicle session. Conversely, an RFID entry creates an operational session and allocation record but does not prove that a camera has visually observed the vehicle.",
+        "The backend exposes separate routes for vehicle entry/exit, parking status, allocation benchmarks, forecasts, and dashboard data. The database is the authoritative state shared by those services. A slot is occupied while its RFID vehicle session is active and becomes free after a confirmed exit.",
     )
 
     _heading(document, "5. Hardware Design")
     _paragraph(
         document,
-        "The selected compile targets are a generic ESP32 DevKit/WROOM-32 controller and an AI-Thinker ESP32-CAM/OV2640. The repository's original design did not specify purchased board revisions; therefore the controller pin assignment is proposed and the camera firmware explicitly selects the AI-Thinker map. Check the board silkscreen and vendor documentation before power-up. The diagrams are a design proposal, not a physically verified circuit.",
+        "The tabletop prototype uses an ESP32 DevKit, an RC522 reader, a solderless breadboard, indicator LEDs, and jumper wires. The firmware assigns RC522 SS to GPIO 5 and RST to GPIO 4; SPI uses GPIO 18/19/23, the OLED uses GPIO 21/22, the five LEDs use GPIO 25/26/27/32/33, and the demonstration servo signal uses GPIO 14. Figures 2 and 3 show the documented wiring. Photographs cannot establish concealed pin continuity, supply voltage, or resistor values.",
     )
     _add_figure(
         document,
         figures,
         "circuit_diagram.png",
-        "Figure 2. Proposed electrical wiring with separate servo/camera power rails and a common ground reference.",
+        "Figure 2. Proposed electrical wiring with separate servo power rail and a common ground reference.",
     )
     _add_figure(
         document,
         figures,
         "wiring_diagram.png",
-        "Figure 3. Proposed signal map for controller peripherals and Wi-Fi-connected camera.",
+        "Figure 3. Proposed signal map for controller peripherals.",
     )
     _add_table_caption(document, "Table 3. Proposed controller pin assignments")
     _add_table(
@@ -513,7 +667,7 @@ def build_report(
         ["Component", "Signal", "ESP32 pin", "Voltage", "Connection note"],
         [
             ["RC522", "SCK / MISO / MOSI", "18 / 19 / 23", "3.3 V logic", "VSPI; dedicated bus"],
-            ["RC522", "SS / RST", "13 / 4", "3.3 V logic", "Avoid strap pins for SS"],
+            ["RC522", "SS / RST", "5 / 4", "3.3 V logic", "Matches the current firmware pin definitions"],
             [
                 "OLED",
                 "SDA / SCL",
@@ -535,30 +689,23 @@ def build_report(
                 "3.3 V signal",
                 "Servo +5 V from a separate regulated supply; common GND",
             ],
-            [
-                "AI-Thinker ESP32-CAM",
-                "OV2640 camera bus",
-                "0, 5, 18, 19, 21–27, 32, 34–39",
-                "Module-internal",
-                "Reserved by camera; no external peripherals on these pins",
-            ],
         ],
         font_size=8,
     )
     _paragraph(
         document,
-        "The controller pin proposal avoids classic ESP32 strapping pins (0, 2, 5, 12, 15), flash-reserved pins (6–11), and input-only GPIO34–39. The selected RC522 bus uses 18/19/23; the OLED uses 21/22; LED and servo signals use output-capable GPIO. Espressif documents these GPIO restrictions and boot-strap considerations [9]. Camera GPIO assignments follow the AI-Thinker reference map in Espressif's esp32-camera project [10]. The pin map has been reviewed against those references but not checked with a multimeter or actual board revision.",
+        "The RC522 uses the firmware's SPI pins, and the OLED uses its I²C pins. Each of the five active-high LED outputs has its own series resistor. GPIO and boot-strapping constraints are documented in the ESP32 datasheet [18]. Table 3 follows the firmware pin definitions; the photographs do not independently verify each connection.",
     )
     _paragraph(
         document,
-        "Use the controller's USB input, RC522/OLED 3V3, a separate regulated 5-V supply for the servo, and a separately regulated 5-V camera input. Connect grounds at a common reference while keeping positive 5-V rails isolated. A 330 Ω series resistor limits each indicator LED current. A servo can draw a transient/stall current beyond a GPIO or dev-board regulator budget; size the external supply to the exact SG90 variant, and keep the barrier model lightweight and supervised. A hobby servo is not a safety-rated real gate: loss of servo power may leave the arm where it stopped.",
+        "Power the controller through USB and supply 3.3 V logic to the RC522 and OLED. Use a separately regulated 5 V supply for the servo, with its ground connected to the controller ground; do not connect the servo's positive supply to the controller logic rail. Fit a 330 Ω resistor in series with each LED. Servo startup or stall current can exceed the capacity of a GPIO or development-board regulator, so size the external supply for the specific SG90 variant. Keep the lightweight model supervised. A hobby servo is not a safety-rated barrier actuator, and a power loss can leave its arm in place.",
     )
     _paragraph(
         document,
-        "The bill of materials, full per-signal CSV pin map, wiring sequence, calibration notes and troubleshooting table are included in final_submission/hardware/ and docs/hardware/validation.md. The user reports successful operation of the assembled tabletop rig; quantitative per-component validation remains uncaptured.",
+        "The bill of materials, per-signal pin map, wiring sequence, and troubleshooting guide are in docs/hardware/. The 26 October controller log records two RFID transactions, the change in S1 status, and LED and gate commands. LED physical output was not visually verified; servo movement was not independently observed, and supply current was not measured.",
     )
 
-    _heading(document, "6. Software and Machine-Learning Design")
+    _heading(document, "6. Methodology: Software and Machine-Learning Design")
     _add_table_caption(document, "Table 4. Software components and responsibilities")
     _add_table(
         document,
@@ -566,15 +713,15 @@ def build_report(
         [
             [
                 "Python 3.14.8",
-                "Backend, data preparation, benchmarking, camera ingestion, calibration, report tooling on the measured host.",
+                "Backend, data preparation, benchmarking, report tooling on the measured host.",
             ],
             [
                 "FastAPI and SQLite",
-                "HTTP contracts, lifecycle state, occupancy transitions, prediction/optimizer metrics and dashboard data.",
+                "HTTP contracts, RFID lifecycle state, session-derived slot occupancy, prediction/optimizer metrics and dashboard data.",
             ],
             [
                 "NumPy and Pillow",
-                "Feature arrays and bounded JPEG decode/ROI edge-density detection.",
+                "Feature construction and server-side forecasting model training and inference.",
             ],
             [
                 "TensorFlow/Keras",
@@ -582,7 +729,7 @@ def build_report(
             ],
             [
                 "Arduino framework + PlatformIO",
-                "ESP32 controller and AI-Thinker ESP32-CAM builds; no device was attached during compile verification.",
+                "ESP32 controller build; device attachment is reported separately from compilation.",
             ],
             [
                 "Graphviz and python-docx",
@@ -594,15 +741,15 @@ def build_report(
     _heading(document, "6.1 Dataset and Preprocessing", 2)
     _paragraph(
         document,
-        f"The deterministic corpus is explicitly synthetic: {metadata['records']['feature_timeline']:,} five-minute timeline buckets across 14 days, {metadata['feature_count']} model input features, and {metadata['records']['raw_observations']:,} privacy-safe source observations. It covers five configured slots from {metadata['time_coverage_utc']['start']} through {metadata['time_coverage_utc']['end']}; seed {metadata['random_seed']}. Features include occupancy ratio/change and rolling means, cyclic hour and weekday terms, simulated weather categories, holiday/event flags, entry/exit/allocation counts, active sessions, privacy-safe vehicle aggregates, and normalized allocation context. The target is occupancy ratio at the next five-minute interval.",
+        f"The dataset is synthetic and deterministic. It contains {metadata['records']['feature_timeline']:,} five-minute intervals over 14 days, {metadata['feature_count']} input features, and {metadata['records']['raw_observations']:,} privacy-safe source observations. The timeline covers five configured spaces from {metadata['time_coverage_utc']['start']} through {metadata['time_coverage_utc']['end']} and uses seed {metadata['random_seed']}. Inputs include occupancy and its change, rolling averages, time and weekday cycles, simulated weather and event indicators, vehicle counts, active sessions, aggregated vehicle attributes, and allocation context. Each example predicts the occupancy ratio one interval ahead.",
     )
     _paragraph(
         document,
-        "The existing preprocessor creates a 12-bucket (60-minute) lookback and one-step forecast horizon. It divides the timeline chronologically into 70% training, 15% validation and 15% test before sequence construction; sequence counts are 2,810, 592 and 594. Continuous-feature means and scales are fitted on training data only. The same immutable PreparedDataset is passed to all three neural models, and no RFID UID is part of model inputs. This prevents future observations from entering earlier sequences or fitted scaling statistics.",
+        "For each prediction, the preprocessor supplies the preceding 12 intervals (60 minutes) and forecasts the next one. It splits the timeline in chronological order into 70% training, 15% validation, and 15% test before building sequences; the resulting counts are 2,810, 592, and 594. Feature means and scales are fitted on training data only. All three neural models receive the same PreparedDataset, and no RFID UID enters the model. This setup keeps later observations out of earlier inputs and prevents test data from influencing scaling.",
     )
     _paragraph(
         document,
-        "Missing-value handling follows the existing feature builder: eligible short gaps are forward-filled and longer gaps remain missing and are excluded from training examples. Bounded/cyclic/one-hot inputs retain their established contract; the continuous feature scaler is shared by all models. The last timeline bucket has no next-step target and is not used as a supervised target row. The data is useful for exercising code paths and comparing models reproducibly; it cannot estimate field performance, actual weather effects, arrival rates, camera accuracy or transfer to another lot.",
+        "The feature builder forward-fills eligible short gaps. Longer gaps remain missing, and examples containing them are excluded from training. Bounded, cyclic, and one-hot features follow the existing input contract; all models share the same continuous-feature scaler. Because the final interval has no following target, it is not used as a labeled example. This dataset supports repeatable software comparisons, but it cannot measure real parking demand, weather effects, or performance at another site.",
     )
     _paragraph(
         document,
@@ -619,17 +766,17 @@ def build_report(
     )
     _paragraph(
         document,
-        "LSTM and GRU models each apply one 16-unit recurrent layer to the 12-step sequence, followed by a one-unit sigmoid output. The temporal Transformer projects each 27-feature step to width 16, adds learned positional embeddings, applies two-head self-attention (key dimension 8), residual/LayerNorm, a 32-unit ReLU then 16-unit feed-forward block, a second residual/LayerNorm, global average pooling, and a sigmoid scalar output. Training uses mean-squared-error loss with Adam at 0.001, 12 maximum epochs, batch size 32, early-stopping patience 3, recurrent units 16, Transformer width 16 and two heads. Seeded TensorFlow/Keras deterministic operations are enabled where supported. The target is continuous occupancy ratio, so classification accuracy, F1, ROC and confusion matrices are not applicable.",
+        "The LSTM and GRU each use one 16-unit recurrent layer and a sigmoid output that predicts one occupancy value. For the Transformer, each 27-feature interval is projected to width 16 and combined with a learned positional embedding. Two-head self-attention (key dimension 8) feeds a residual connection and layer normalization, followed by 32- and 16-unit feed-forward layers, a second residual connection, global average pooling, and a sigmoid output. All models use mean-squared-error loss and Adam with a 0.001 learning rate. Training is capped at 12 epochs, uses batches of 32, and stops early after three validation epochs without improvement. TensorFlow/Keras deterministic operations are enabled where supported. Since occupancy is continuous, classification accuracy, F1, ROC curves, and confusion matrices do not apply.",
     )
     _paragraph(
         document,
-        "Model files use content-addressed Keras artifacts with manifests containing feature order, split identity, scaler values, configuration, software versions and SHA-256. The artifacts execute in the server runtime. TensorFlow Lite, quantization and pruning were not implemented because inference is intentionally server-side; no ESP32 inference claim is made.",
+        "Each Keras artifact is content-addressed and accompanied by a manifest recording feature order, split identity, scaler values, configuration, software versions, and SHA-256 hash. The server loads these artifacts for inference. TensorFlow Lite conversion, quantization, and pruning are outside the current design because the ESP32 does not run the neural models.",
     )
 
     _heading(document, "6.3 Allocation Objective", 2)
     _paragraph(
         document,
-        "For candidate slot i, the shared normalized scalar objective is J(i) = 0.35 dᵢ + 0.30 cᵢ + 0.20 wᵢ + 0.15 fᵢ, where distance d, congestion c, waiting contribution w, and fairness penalty f are read from parking configuration. Occupied slots are excluded before search. The benchmark compares a first-available policy, exhaustive enumeration of every free slot (the exact optimum for this single-slot decision), and GA, PSO, and ACO on identical scenario records and weights. For heuristic assignment x, the optimality gap is J(x) − minᵢ J(i), which is nonnegative up to floating-point tolerance. Convergence curves are not included because the existing optimizer interface does not expose valid per-iteration histories [12], [13].",
+        "Each free candidate slot i receives the normalized cost J(i) = 0.35 dᵢ + 0.30 cᵢ + 0.20 wᵢ + 0.15 fᵢ. The terms represent distance, congestion, waiting, and fairness from the live allocation request. Occupied slots are removed before selection. For the benchmark, the application captures the request at each SUMO/TraCI parking admission and replays first-available, exhaustive search (the exact solution for this one-slot choice), GA, PSO, ACO, and NSGA-II against the same observed state and weights. For a heuristic choice x, its gap from the exact result is J(x) − minᵢ J(i), nonnegative apart from floating-point tolerance. The optimizer interface does not provide valid per-iteration histories, so convergence curves are not reported [14], [15].",
     )
     _paragraph(document, "The controller-side request sequence is:")
     code = document.add_paragraph()
@@ -643,40 +790,36 @@ def build_report(
     _heading(document, "7. Implementation Details")
     _paragraph(
         document,
-        "The backend lifecycle API accepts JSON fields rfid_uid and idempotency_key. A key is generated from the controller chip identifier and an NVS-persisted sequence number, then stored with the pending operation before transmission. A restart reuses the same key and payload, allowing the server's existing idempotency behavior to replay a completed response safely. The UID is not printed to Serial. As the existing API has no device authentication or TLS provision in this project, these requests must remain on a trusted private LAN.",
+        "The vehicle API accepts the JSON fields rfid_uid and idempotency_key. Before sending a request, the controller builds a key from its chip identifier and a sequence number stored in non-volatile storage, then saves the key with the pending operation. After a restart, it resends that same key and payload, allowing the server to return the result of an operation it has already committed. The firmware does not print tag identifiers to Serial. The API currently lacks device authentication and TLS, so the controller should only connect through a trusted private network.",
     )
     _paragraph(
         document,
-        "Allocation follows one shared weighted_cost function. A no-available-slot response is HTTP 409, which the controller treats as a closed-gate result. For successful entry, the firmware validates the returned UID, slot identifier, slot name, gate_action and current status before display and actuation. For exit it requires that the session no longer appears active. The slot LEDs reflect accepted server occupancy: ON means occupied, OFF means free, and all blink when status is unknown. OLED messages cover initialization, Wi-Fi/backend state, scanning, assignment, parking-full/conflict, completion and errors. The timed gate state machine closes after its configured open interval; it does not use an unbounded delay.",
+        "The server and benchmark use the same weighted_cost function. If no space is free, the API returns HTTP 409 and the controller keeps the gate closed. Before opening it after entry, the firmware checks the returned tag, slot identifier and name, gate action, and current parking status. After exit, it confirms that the session is no longer active. The five LEDs show the accepted server state: on for occupied, off for free, and blinking together when status is unknown. The OLED reports startup, network state, scans, assignments, full-lot responses, completion, and errors. A timed state machine closes the demonstration gate after its configured interval.",
     )
     _paragraph(
         document,
-        "The ESP32-CAM exposes GET /health and GET /capture. AI-Thinker pin assignments are isolated in camera_board.h; unknown board variants fail compilation unless a mapping is explicitly selected. JPEG capture uses VGA and JPEG quality 12 by default, with PSRAM-aware buffers. The Python camera_ingest process validates image/jpeg, bounds payload size and response size, decodes the JPEG with Pillow, posts to the existing multipart occupancy API, limits operation to one in-flight frame, and exponentially backs off after errors. The minimum capture interval is two seconds.",
-    )
-    _paragraph(
-        document,
-        "ROI calibration captures a live JPEG or accepts a previously saved real JPEG, presents an interactive Tk/Pillow rectangle selector, validates one in-bounds non-overlapping ROI per configured slot, writes the same ROI schema used by the detector, and saves a visual overlay. This environment cannot supply a real lot image, so no calibrated field ROI file is included. The current detector computes edge density for each crop and applies the configured score threshold; confidence and three consecutive candidate frames are required before persisting a transition. It remains a heuristic, not a validated vehicle classifier.",
+        "A slot changes to occupied only when the server commits the RFID session and allocation. On exit, the same session is closed and its assigned slot becomes free. Both the LEDs and dashboard use the resulting server status, keeping their view of occupancy aligned.",
     )
 
     _heading(document, "8. Experimental Setup")
     _paragraph(
         document,
-        "The prediction experiment uses the generated synthetic timeline and the unchanged chronological split. All neural models use common preprocessing and the untouched test partition; the persistence baseline predicts the latest occupancy ratio. Inference latency is measured as median warm prediction time divided by example count on the server CPU. The results are from TensorFlow 2.22.0-rc0/Keras 3.16.0.dev2026101404 under Python 3.14.8 on Linux x86_64 with an Intel Core i7-14650HX host. No accelerator or microcontroller timing is reported.",
+        "The forecast comparison uses the generated synthetic timeline and its chronological split. Each neural model shares the same preprocessing and test partition; the persistence baseline carries the latest observed occupancy forward by one interval. Server inference latency is the median warm-run prediction time divided by the number of examples. The run used TensorFlow 2.22.0-rc0, Keras 3.16.0.dev2026101404, and Python 3.14.8 on Linux x86_64 with an Intel Core i7-14650HX. No accelerator or ESP32 inference time is included.",
     )
     _paragraph(
         document,
-        f"Optimizer tests use {optimizer_summary['scenario_count']} distinct scenarios, three repeat seeds per scenario, {optimizer_summary['iterations']} iterations per heuristic, and configured weights {json.dumps(optimizer_summary['weights'], sort_keys=True)}. Scenario occupancy spans empty, light, moderate, heavy, near-full and full categories. Seed derivation is `{optimizer_summary['random_seed_formula']}`. Each policy receives identical scenario inputs. Runtime is measured with a monotonic clock. Full-capacity rejections are separated from successful cost statistics. This is a simulated one-slot objective, not traffic throughput or physical wait time.",
+        f"The allocation benchmark covers {optimizer_summary['scenario_count']} SUMO-observed parking admissions, {optimizer_summary['repeated_seeds_per_scenario']} optimizer seeds per observed state, and {optimizer_summary['iterations']} iterations for each heuristic. It uses the configured weights {json.dumps(optimizer_summary['weights'], sort_keys=True)}. SUMO {optimizer_summary['sumo_version']} ran with seed {optimizer_summary['sumo_seed']} and {optimizer_summary['sumo_step_length_seconds']:.2f}-second steps; configuration, network, and route SHA-256 hashes are included in the evidence. Candidate inputs are preserved in `evidence/sumo_observed_scenarios.jsonl`; results are replayed on each captured live-allocation request. Runtime is measured with a monotonic clock. Rejections at full capacity are counted separately. These results measure this modeled SUMO traffic run, not a real facility or measured queue delay.",
     )
     _paragraph(
         document,
-        "The host's development environment provides an Intel Core i7-14650HX with 24 CPUs online and 15 GiB RAM; benchmark latencies are software measurements from this machine and vary with system load. During an earlier integration check, the host exposed a generic CH340 USB serial adapter at /dev/ttyUSB0, but the attached target board could not then be identified from the host. No private controller configuration was present, and esp32-cam.local was not resolved at that time. Later work identified and flashed an ESP32 controller; the user subsequently reported that the assembled tabletop rig works. These historical host observations are not post-rewire peripheral measurements.",
+        "The host has an Intel Core i7-14650HX, 24 CPUs online, and 15 GiB RAM. Model and allocation runtimes were measured in software on this machine and may vary with system load. For the hardware trial, an ESP32 DevKit connected to the local API over Wi-Fi. The results below come from the controller's timestamped serial capture and the API access log dated 26 October 2026.",
     )
 
     _heading(document, "9. Results and Discussion")
     _heading(document, "9.1 Prediction Results", 2)
     _paragraph(
         document,
-        "Table 5 compares the persistence reference with the three trained neural regressors on the same test windows. GRU is the best measured model for MAE and RMSE on this generated split. This is an empirical ranking for one synthetic dataset and seed, not evidence of universal superiority or real-lot forecast quality. All inference timing is server CPU timing; model size is serialized Keras size.",
+        "Table 5 reports the persistence baseline and three neural regressors on the same chronological test windows. GRU has the lowest MAE and RMSE in this run. The ranking applies to one synthetic dataset and seed; it does not establish that GRU will perform best on other data or at a real parking site. Inference times are from the server CPU, and model sizes refer to the serialized Keras files.",
     )
     _add_model_results_table(document, repository_root)
     _add_figure(
@@ -722,20 +865,20 @@ def build_report(
     )
     _paragraph(
         document,
-        f"The measured GRU test MAE is {float(models['gru']['mae']):.6f}, versus persistence MAE {float(models['persistence_baseline']['mae']):.6f}. The 27 features include simulated calendar/weather/event context, but synthetic context may encode generator-specific patterns. Real measured samples, external-site validation and repeated independent dataset seeds are needed before drawing deployment conclusions. No camera accuracy metric is reported because no labeled image evaluation set is available.",
+        f"On the shared synthetic test set, GRU lowers MAE by {(1 - float(models['gru']['mae']) / float(models['persistence_baseline']['mae'])) * 100:.1f}% and RMSE by {(1 - float(models['gru']['rmse']) / float(models['persistence_baseline']['rmse'])) * 100:.1f}% relative to persistence. LSTM is second on both measures. The Transformer also improves on persistence, but not as much as the recurrent models in this run. Some of the 27 inputs, including simulated calendar, weather, and event context, may reflect patterns specific to the generator. Measured occupancy data, evaluation at another site, and independently seeded datasets are needed before making deployment claims.",
     )
 
     _heading(document, "9.2 Allocation Results", 2)
     _paragraph(
         document,
-        "Table 6 summarizes allocation performance across the repeated attempts; each policy rejected 60 of 360 attempts at full capacity. There were zero invalid slot assignments. The exhaustive policy is the exact single-slot minimum for each scenario. GA matched this mean cost in this run but required substantially more Python runtime than enumeration; ACO was close to optimal and PSO had a larger mean gap. The first-available baseline was fastest but had higher mean cost. Heuristics are not expected to beat exact enumeration when at most five candidates exist.",
+        f"Table 6 aggregates {optimizer_summary['scenario_count']} parking allocation states observed during the executed SUMO run and {optimizer_summary['repeated_seeds_per_scenario']} optimizer-seed repetitions per state across {optimizer_summary['candidate_capacity']:,} candidate bays. Each policy rejected {optimizer_summary['full_capacity_rejections']} full-capacity attempts. Exhaustive search gives the exact minimum for this one-slot decision, with mean cost {float(optimizer_metrics['exhaustive_optimum']['mean_cost']):.6f}. GA mean cost was {float(optimizer_metrics['GA']['mean_cost']):.6f}; NSGA-II mean cost was {float(optimizer_metrics['NSGA-II']['mean_cost']):.6f}, with a mean optimality gap of {float(optimizer_metrics['NSGA-II']['mean_optimality_gap']):.6f} and median runtime {float(optimizer_metrics['NSGA-II']['median_runtime_ms']):.3f} ms. Cost and runtime are measured from these captured modeled states and Python optimizer executions; they do not establish real-facility throughput or field performance.",
     )
     _add_optimizer_results_table(document, repository_root)
     _add_figure(
         document,
         figures,
-        "optimizer_comparison.png",
-        "Figure 13. Mean allocation objective cost by policy and exact/baseline reference.",
+        "average_allocation_cost.png",
+        "Figure 13. Mean allocation objective cost across all six policies, including NSGA-II, at 2,376 modeled bays.",
     )
     _add_figure(
         document,
@@ -761,97 +904,124 @@ def build_report(
         "objective_components.png",
         "Figure 17. Mean weighted objective components among successful allocations.",
     )
+    occupancy_levels = ("empty", "light", "moderate", "heavy", "near_full", "full")
+    observed_levels = [
+        level for level in occupancy_levels if optimizer_summary["occupancy_levels"].get(level, 0)
+    ]
     occupancy_rows = []
-    for level in ("empty", "light", "moderate", "heavy", "near_full"):
+    category_run_counts = []
+    for level in observed_levels:
+        category_run_counts.append(
+            f"{level}: {optimizer_summary['by_occupancy'].get(f'GA:{level}', {}).get('runs', 0)} runs per policy"
+        )
         occupancy_rows.append(
             [level]
             + [
-                f"{optimizer_summary['by_occupancy'][f'{name}:{level}']['mean_cost']:.6f}"
-                for name in ("first_available", "exhaustive_optimum", "GA", "PSO", "ACO")
+                (
+                    f"{optimizer_summary['by_occupancy'][f'{name}:{level}']['mean_cost']:.6f}"
+                    if f"{name}:{level}" in optimizer_summary["by_occupancy"]
+                    else "No successful assignment"
+                )
+                for name in ("first_available", "exhaustive_optimum", "GA", "PSO", "ACO", "NSGA-II")
             ]
         )
-    _add_table_caption(document, "Table 7. Mean objective cost by simulated occupancy category")
+    _add_table_caption(document, "Table 7. Mean objective cost by SUMO-observed occupancy category")
     _add_table(
         document,
-        ["Occupancy category", "First available", "Exact", "GA", "PSO", "ACO"],
+        ["Occupancy category", "First available", "Exact", "GA", "PSO", "ACO", "NSGA-II"],
         occupancy_rows,
         font_size=7,
     )
     _paragraph(
         document,
-        "The occupancy-stratified table uses 60 repeated successful runs per category and policy. Full-capacity cases are excluded from these cost means and are reported separately. Runtime values describe Python algorithm execution on the host and are not estimates of physical vehicle wait or lane throughput.",
+        f"Table 7 includes only occupancy categories observed during the SUMO run ({'; '.join(category_run_counts)}). No results are generated for unobserved occupancy levels. Full-capacity rejections ({optimizer_summary['full_capacity_rejections']}) are reported separately. Runtime measures the Python algorithms on this host; it does not represent measured facility throughput or real queue waiting time.",
     )
 
     _heading(document, "9.3 Hardware and integration test status", 2)
     if hardware_validation:
-        reader_versions = ", ".join(
-            f"0x{item['version_register']:02X}"
-            for item in hardware_validation.get("rfid_reader_spi_probes", [])
-            if isinstance(item.get("version_register"), int)
-        ) or "no reader probe captured"
+        latest_live = hardware_validation.get("latest_live_validation", {})
         heap_metric = (
             hardware_summary.get("metrics", {}).get("free_heap_bytes", {})
             if hardware_summary
             else {}
         )
         heap_result = (
-            f" Free heap across {heap_metric['count']} physical serial events averaged "
+            f" Across {heap_metric['count']} serial events, free heap averaged "
             f"{heap_metric['mean']:.0f} bytes (median {heap_metric['median']:.0f}, "
-            f"sample standard deviation {heap_metric['standard_deviation']:.0f}, "
+            f"standard deviation {heap_metric['standard_deviation']:.0f}, "
             f"p95 {heap_metric['p95']:.0f})."
             if heap_metric.get("status") == "MEASURED"
             else " Controller free-heap measurement is NOT TESTED."
         )
+        rfid_trial_text = (
+            f"The post-rewire trial detected {rfid_metric['successes']}/"
+            f"{rfid_metric['trials']} test scans; both entry and exit transactions returned HTTP 200. "
+            if rfid_metric.get("status") == "MEASURED"
+            and api_metric.get("status") == "MEASURED"
+            else "No post-rewire RFID transaction trial is recorded. "
+        )
+        entry_latency_text = (
+            f"Entry transaction latency: {entry_metric['mean']:.0f} ms. "
+            if entry_metric.get("status") == "MEASURED"
+            else "Entry transaction latency: NOT TESTED. "
+        )
+        exit_latency_text = (
+            f"Exit transaction latency: {exit_metric['mean']:.0f} ms. "
+            if exit_metric.get("status") == "MEASURED"
+            else "Exit transaction latency: NOT TESTED. "
+        )
+        gate_timing_text = (
+            f"Four gate-command timestamps averaged "
+            f"{gate_metric['mean']:.0f} ms (median {gate_metric['median']:.0f}, "
+            f"p95 {gate_metric['p95']:.0f}); these are command timestamps, not measured "
+            "servo travel. "
+            if gate_metric.get("status") == "MEASURED"
+            else "Servo command timing is NOT TESTED. "
+        )
+        slot_observation = (
+            "Server status showed S1 changed to occupied at entry and free at exit."
+            if latest_live.get("entry_slot_observation") and latest_live.get("exit_slot_observation")
+            else ""
+        )
         hardware_status_paragraph = (
-            f"PlatformIO compiled both firmware targets. A read-only probe identified "
-            f"the controller as {hardware_validation.get('controller_chip', 'an ESP32')}; "
-            f"its {hardware_validation.get('flash_size_bytes', 0):,}-byte flash was backed "
-            f"up before the upload, and esptool verified the flashed image hash. Serial "
-            f"telemetry recorded {hardware_validation.get('controller_boot_events', 0)} boots "
-            f"and {hardware_validation.get('wifi_connected_events', 0)} Wi-Fi connections. "
-            f"The local API access log recorded "
-            f"{hardware_validation.get('health_200_responses_after_latest_boot', 0)} successful "
+            f"PlatformIO compiled both firmware targets. The controller was identified as "
+            f"{hardware_validation.get('controller_chip', 'an ESP32')}; esptool verified the hash "
+            f"of the flashed firmware binary, and an earlier full flash backup is retained. "
+            f"During the logged run, serial telemetry recorded "
+            f"{hardware_validation.get('controller_boot_events', 0)} boots and "
+            f"{hardware_validation.get('wifi_connected_events', 0)} Wi-Fi connections. The API log "
+            f"showed {hardware_validation.get('health_200_responses_after_latest_boot', 0)} successful "
             f"health checks and {hardware_validation.get('authenticated_status_200_responses_after_latest_boot', 0)} "
-            f"authenticated parking-status responses from the ESP32 after its latest boot."
-            f"{heap_result} The RC522 VersionReg probes returned {reader_versions} during "
-            f"the earlier wiring attempt. The user subsequently reports that the rewired "
-            f"tabletop rig works, but no post-rewire serial capture, trial count, or "
-            f"quantitative result was supplied; this remains a user-reported functional "
-            f"check rather than independently captured evidence. No camera health endpoint "
-            f"was found during the earlier LAN scan. RFID success rate, camera accuracy, "
-            f"OLED/LED correctness, current draw, and physical servo timing remain without "
-            f"measured trials. The occupancy API "
-            f"has software tests with generated images and status-transition assertions, "
-            f"not a labeled real-camera set."
+            f"authenticated parking-status responses after the latest boot. {rfid_trial_text}"
+            f"{entry_latency_text}{exit_latency_text}{slot_observation} {heap_result} {gate_timing_text}"
+            f"The LEDs were not visually checked. Current draw, Wi-Fi recovery time, and physical "
+            f"servo movement remain NOT TESTED. Historical isolated RC522 VersionReg probes returned "
+            f"0xFF and 0x00; these were not repeatability trials and are reported separately from "
+            f"the later successful RFID transaction observations."
         )
         controller_build_result = (
-            f"PASS: compiled and flashed to {hardware_validation.get('controller_chip', 'ESP32')}; "
-            "esptool hash verification passed and a full flash readback was saved before update."
+            f"PASS: latest controller firmware was flashed to "
+            f"{hardware_validation.get('controller_chip', 'ESP32')}; esptool binary hash verification passed. "
+            "An earlier full flash readback is retained."
         )
         controller_network_result = (
-            f"PASS: {hardware_validation.get('wifi_connected_events', 0)} Wi-Fi connection "
-            f"events; {hardware_validation.get('authenticated_status_200_responses_after_latest_boot', 0)} "
-            "authenticated status responses returned HTTP 200."
+            f"PASS: {api_metric.get('successes', 0)}/{api_metric.get('trials', 0)} "
+            "post-rewire vehicle transactions returned HTTP 200 after slot-status synchronization."
         )
         reader_result = (
-            f"Earlier probe: invalid VersionReg values {reader_versions}. The user later "
-            "reported successful operation after rewiring; no post-rewire card-read log "
-            "or repeated-trial count was captured. Qualitative user report only."
+            f"PASS: {rfid_metric.get('successes', 0)}/{rfid_metric.get('trials', 0)} "
+            "post-rewire RFID test scans succeeded; entry and exit both "
+            "completed with HTTP 200. This two-trial result is not a reliability estimate."
         )
-        camera_network_result = "NOT TESTED: camera board or /health endpoint was not found on LAN."
+
     else:
         hardware_status_paragraph = (
-            "PlatformIO compiled the controller and AI-Thinker ESP32-CAM firmware. "
-            "There is no physical controller validation evidence in the repository; "
-            "no physical controller validation evidence is available. RFID, camera, "
-            "display, LEDs, servo, current, and hardware latency remain NOT TESTED. "
-            "The occupancy API has software tests with generated images and status-transition "
-            "assertions, not a labeled real-camera set."
+            "PlatformIO compiled the controller firmware. No physical controller validation evidence is available. RFID reads, display, LEDs, servo, current, and hardware latency remain NOT TESTED."
         )
         controller_build_result = "PASS: PlatformIO compilation only; no physical flash evidence."
         controller_network_result = "NOT TESTED: no physical controller network evidence."
         reader_result = "NOT TESTED physically; no reader probe or card read was recorded."
-        camera_network_result = "NOT TESTED: no camera health endpoint was verified."
+
     _paragraph(
         document,
         hardware_status_paragraph,
@@ -866,10 +1036,6 @@ def build_report(
                 controller_build_result,
             ],
             [
-                "ESP32-CAM firmware build",
-                "PASS: PlatformIO compilation for AI-Thinker target; no camera capture verified.",
-            ],
-            [
                 "USB serial/network reachability",
                 controller_network_result,
             ],
@@ -878,12 +1044,10 @@ def build_report(
                 reader_result,
             ],
             [
-                "OLED, LEDs, servo, physical camera",
-                f"The user reports that the assembled rig works; no post-rewire per-component captures or trial counts are available. {camera_network_result}",
-            ],
-            [
-                "Vision accuracy",
-                "Not measured; no labeled real-camera test set.",
+                "OLED, LEDs, servo",
+                "The firmware logged five LED states and commanded S1 on at entry and off at exit. "
+                "LED physical output was not visually verified. Servo values are command timing; "
+                "physical movement was not independently measured.",
             ],
             [
                 "ESP32 inference latency / memory",
@@ -891,41 +1055,136 @@ def build_report(
             ],
         ],
     )
+    free_heap = hardware_metrics.get("free_heap_bytes", {})
+    measured_rows = [
+        [
+            "RFID reads",
+            f"{rfid_metric.get('successes', 0)}/{rfid_metric.get('trials', 0)}",
+            "Two operator-confirmed scans; descriptive only, not a reliability estimate.",
+        ],
+        [
+            "Entry / exit API transactions",
+            f"{api_metric.get('successes', 0)}/{api_metric.get('trials', 0)}",
+            "Both returned HTTP 200 after controller status synchronization.",
+        ],
+        [
+            "Entry response latency",
+            f"{entry_metric.get('mean', 'NOT TESTED')} ms (n={entry_metric.get('count', 0)})",
+            "One measured transaction; no population latency claim.",
+        ],
+        [
+            "Exit response latency",
+            f"{exit_metric.get('mean', 'NOT TESTED')} ms (n={exit_metric.get('count', 0)})",
+            "One measured transaction; no population latency claim.",
+        ],
+        [
+            "Free heap telemetry",
+            (
+                f"mean {free_heap['mean']:.0f}; median {free_heap['median']:.0f}; "
+                f"p95 {free_heap['p95']:.0f} bytes (n={free_heap['count']})"
+                if free_heap.get("status") == "MEASURED"
+                else "NOT TESTED"
+            ),
+            "ESP32 serial telemetry during the logged run.",
+        ],
+        [
+            "Gate command delay",
+            (
+                f"mean {gate_metric['mean']:.0f}; median {gate_metric['median']:.0f}; "
+                f"p95 {gate_metric['p95']:.0f} ms (n={gate_metric['count']})"
+                if gate_metric.get("status") == "MEASURED"
+                else "NOT TESTED"
+            ),
+            "Firmware command timestamps; servo arm travel was not measured.",
+        ],
+        ["Wi-Fi recovery / current / visual LED correctness", "NOT TESTED", "No controlled outage or electrical measurement was captured."],
+    ]
+    _add_table_caption(document, "Table 9. Recorded physical measurements and untested quantities")
+    _add_table(document, ["Metric", "Observed result", "Interpretation"], measured_rows, font_size=8)
+    _paragraph(
+        document,
+        "Both recorded RFID scans were accepted, and both API transactions succeeded. Entry response time was 1,431 ms; exit response time was 1,220 ms, with one observation in each direction. The 211 ms difference is descriptive, not a comparison of typical performance. Table 9 also reports gate-command timestamps and free-heap samples. A command timestamp does not measure how quickly the servo arm moves. Current draw, visible LED operation, and Wi-Fi recovery were not measured.",
+    )
+    _add_figure(
+        document,
+        figures,
+        "hardware_timing_comparison.png",
+        "Figure 18. Observed entry, exit and gate-command event timing; command latency is not servo travel time.",
+    )
+    _add_figure(
+        document,
+        figures,
+        "city_district_overview.png",
+        "Figure 19. 28 October scene capture of the fictional Parkflow Central district and surrounding city traffic; a modeled setting, not a current Phoenix Marketcity map.",
+    )
+    _add_figure(
+        document,
+        figures,
+        "six_floor_garage.png",
+        "Figure 20. 28 October scene capture of the assembled six-deck garage, including two below-ground levels, four above-ground levels, connecting ramps, and animated traffic.",
+    )
+    _add_figure(
+        document,
+        figures,
+        "first_person_route.png",
+        "Figure 21. 28 October first-person entrance capture with the assigned bay, floor transition, route distance, and animated route guidance.",
+    )
+    _add_figure(
+        document,
+        figures,
+        "parking_navigation_map.png",
+        "Figure 22. 28 October overhead parking-map capture showing the route, current vehicle position, and destination bay on its floor.",
+    )
+    _paragraph(
+        document,
+        "Figures 19–22 are scene captures from 28 October 2026. They document the city, multi-floor garage, first-person driver view, and bay navigation overlay. The screenshots show modeled traffic and geometry; they are interface evidence, not measured traffic outcomes. Tables 8 and 9 report the separate five-space physical-controller evidence. Hardware photographs are omitted.",
+    )
 
     _heading(document, "9.4 Source- and specification-based engineering estimates", 2)
     _paragraph(
         document,
-        "The following are rough engineering planning estimates, not hardware measurements or simulated benchmark outputs. Rate and latency ranges are low-confidence analyst assumptions for a close-range tabletop setup on stable local Wi-Fi. Component timing and current ranges use firmware constants and manufacturer specifications where available. Replace these with recorded trials before drawing performance conclusions. Camera accuracy has no defensible estimate without labeled images.",
+        "Table 10 gives planning estimates for quantities that were not measured. They are engineering assumptions, not hardware measurements or benchmark results. The read-rate and latency ranges assume a close-range tabletop setup on stable local Wi-Fi; component timing and current ranges draw on firmware settings and manufacturer specifications where available. The two recorded scans are functional observations only and do not establish a success rate.",
     )
-    _add_table_caption(document, "Table 9. Rough engineering estimates (not measured)")
+    _add_table_caption(document, "Table 10. Rough engineering estimates (not measured)")
     _add_table(
         document,
         ["Quantity", "Estimate", "Basis and limitations"],
         [
             [
                 "RFID successful reads per close, aligned tap",
-                "90–99% (very low confidence)",
-                "Assumes a supported tag within about 20 mm, stable 3.3 V, and no nearby metal. MFRC522 specifies up to 50 mm depending on antenna tuning; that is not a success-rate guarantee [20].",
+                (
+                    f"Measured {rfid_metric['successes']}/{rfid_metric['trials']} scans; "
+                    "not a reliability estimate"
+                    if rfid_metric.get("status") == "MEASURED"
+                    else "NOT TESTED"
+                ),
+                "Two operator-confirmed close-range test taps were detected. The sample is too small to estimate reliability; MFRC522 specifies up to 50 mm depending on antenna tuning, not a read-success guarantee [17].",
             ],
             [
                 "API entry/exit transaction success on stable local LAN",
-                "98–99.5% (very low confidence)",
-                "Planning assumption for a reachable backend and healthy Wi-Fi. Retries are idempotent, but no post-rewire transaction trial series was captured.",
-            ],
-            [
-                "Camera capture success on stable power/Wi-Fi",
-                "95–99% (very low confidence)",
-                "Planning assumption only; no physical ESP32-CAM capture series or dropped-frame count is available.",
+                (
+                    f"Measured {api_metric['successes']}/{api_metric['trials']} transactions; "
+                    "not a reliability estimate"
+                    if api_metric.get("status") == "MEASURED"
+                    else "NOT TESTED"
+                ),
+                "Two post-rewire entry/exit trials returned HTTP 200. This small sample does not estimate long-run availability.",
             ],
             [
                 "LED correctness with known slot state",
-                "95–100% (very low confidence)",
-                "Assumes correct pin mapping/polarity and a successful status refresh. No per-slot expected-versus-observed trial table is available.",
+                "NOT MEASURED; firmware output commands logged",
+                "Serial telemetry recorded the five free-slot commands, S1 on at entry, and S1 off at exit. No visual or electrical output sensor was used.",
             ],
             [
                 "Entry or exit latency, tag detection to accepted API response",
-                "0.2–1.0 s (low confidence)",
-                "Order-of-magnitude estimate for one local-Wi-Fi request and SQLite transaction with the server healthy. The 3.5 s HTTP timeout is a failure limit, not expected latency.",
+                (
+                    f"Measured entry {entry_metric['mean']:.0f} ms; exit "
+                    f"{exit_metric['mean']:.0f} ms (n=1 each)"
+                    if entry_metric.get("status") == "MEASURED"
+                    and exit_metric.get("status") == "MEASURED"
+                    else "NOT TESTED"
+                ),
+                "Host-timestamped ESP32 serial events; one trial per direction is descriptive only. The 3.5 s HTTP timeout is a failure limit, not expected latency.",
             ],
             [
                 "Wi-Fi recovery after AP becomes available",
@@ -934,124 +1193,147 @@ def build_report(
             ],
             [
                 "Servo command delay, RFID detection to authorized GPIO command",
-                "0.2–1.0 s (low confidence)",
-                "Uses the assumed local API round trip; firmware issues the command only after authorization. Excludes mechanical travel.",
+                (
+                    "Measured command events: "
+                    + ", ".join(
+                        f"{value} ms"
+                        for value in hardware_validation.get("latest_live_validation", {}).get(
+                            "servo_command_delay_ms", []
+                        )
+                    )
+                    if hardware_validation
+                    and hardware_validation.get("latest_live_validation", {}).get(
+                        "servo_command_delay_ms"
+                    )
+                    else "NOT TESTED"
+                ),
+                "Firmware command timestamps include gate-open and gate-close commands; they do not measure servo shaft travel or barrier motion.",
             ],
             [
                 "SG90 travel for configured 10°→85° sweep",
                 "0.13–0.50 s (very low confidence)",
-                "Ideal nominal is 75° × 0.1 s/60° ≈125 ms at 4.8 V; upper range is a load/settling allowance. Exact servo variant is unverified [19].",
-            ],
-            [
-                "OV2640 frame capture latency, configured JPEG mode",
-                "0.10–0.50 s (very low confidence)",
-                "Planning range for one SVGA-class JPEG frame with PSRAM. Exposure, frame size, clone, and lighting affect timing; no physical capture log is available.",
-            ],
-            [
-                "Backend five-ROI heuristic processing latency",
-                "0.01–0.10 s (very low confidence)",
-                "Planning range for one frame and five ROIs on the local host; excludes capture, transfer, and queue delay. Not measured on a physical frame.",
+                "Ideal nominal is 75° × 0.1 s/60° ≈125 ms at 4.8 V; upper range is a load/settling allowance. Exact servo variant is unverified [18].",
             ],
             [
                 "Controller free heap",
-                "Measured historical mean 274,069 bytes (n=8)",
-                "Captured physical serial telemetry before the user's later hardware report; median 292,240 bytes, SD 26,019 bytes, p95 293,416 bytes. This is measured, not an estimate or future guarantee.",
+                (
+                    f"Measured mean {hardware_metrics['free_heap_bytes']['mean']:,.0f} bytes "
+                    f"(n={hardware_metrics['free_heap_bytes']['count']})"
+                    if hardware_metrics.get("free_heap_bytes", {}).get("status") == "MEASURED"
+                    else "NOT TESTED"
+                ),
+                (
+                    f"Current serial capture: median {hardware_metrics['free_heap_bytes']['median']:,.0f} bytes, "
+                    f"SD {hardware_metrics['free_heap_bytes']['standard_deviation']:,.0f}, "
+                    f"p95 {hardware_metrics['free_heap_bytes']['p95']:,.0f}. Measured telemetry, not a future guarantee."
+                    if hardware_metrics.get("free_heap_bytes", {}).get("status") == "MEASURED"
+                    else ""
+                ),
             ],
             [
                 "Controller + reader + OLED + LEDs input current, servo excluded",
                 "0.15–0.40 A at 5 V (very low confidence)",
-                "Budget estimate from ESP32 active Wi-Fi radio draw plus peripherals; regulators, OLED brightness, LED current, and network duty cycle vary [21].",
-            ],
-            [
-                "AI-Thinker ESP32-CAM input current",
-                "About 0.18 A at 5 V; up to 0.31 A with flash at maximum",
-                "Ai-Thinker module specification; not measured on this camera board [22].",
+                "Budget estimate from ESP32 active Wi-Fi radio draw plus peripherals; regulators, OLED brightness, LED current, and network duty cycle vary [18].",
             ],
             [
                 "SG90 servo supply current",
                 "0.5–2.0 A (very low confidence)",
-                "Manufacturer product page notes this operating-current range; exact unit/load is unknown. Use a separate regulated servo supply, never ESP32 GPIO or 3.3 V [19].",
-            ],
-            [
-                "Camera occupancy accuracy",
-                "Not estimated",
-                "Requires a manually labeled real-scene test set. Synthetic frames cannot support an accuracy percentage.",
+                "Manufacturer product page notes this operating-current range; exact unit/load is unknown. Use a separate regulated servo supply, never ESP32 GPIO or 3.3 V [18].",
             ],
         ],
     )
 
+    _heading(document, "9.5 Current full-scale software implementation", 2)
+    _paragraph(
+        document,
+        "This update records the application state on 31 October 2026 and supplements the earlier experimental results in this report. The dashboard presents a six-level parking-garage emulation connected to a surrounding fictional city district and a native SUMO/TraCI road simulation. Its 2,376 bays are all represented in the garage map and occupancy records: 396 per deck, with two below-ground decks and four above-ground decks connected by ramps. The layout uses published Haneda P2 floor guides as a geometric reference; the basement placement, building, and city are emulations, not an exact Phoenix Marketcity or Haneda map. The rendered city adds roads, buildings, planted areas, trees, pedestrians, street lighting, and traffic signals, with animated vehicles, barriers, and ramps. The browser refreshes SUMO vehicle snapshots and the parking event stream, keeping movement and bay occupancy tied to current server state. The five-space RFID rig remains the physical prototype; the larger garage is software-modelled.",
+    )
+    _paragraph(
+        document,
+        "The dashboard provides SUMO start, stop, pause, resume, and reset controls and reports the current run state, simulated time, vehicle count, and mean speed. Traffic vehicles that reach the garage approach can enter the parking workflow: each SUMO vehicle ID maps to a stable pseudonymous parking identity across simulation runs, while entry, exit, and rollback operations retain run-specific idempotency keys. The system records a parking session, removes the vehicle from road traffic while parked, then closes the session and rejoins it to traffic on departure. The model caps admission at two arrivals per simulation step and uses a deterministic emulated dwell interval based on the assigned bay and floor; this is a controlled traffic/parking emulation, not a measured arrival rate or throughput result. Separate entry and exit approaches, gate arms, routes, and garage barriers are visible in the model.",
+    )
+    _paragraph(
+        document,
+        "Drivers can use the manual vehicle-ID simulator or an RFID/keyboard reader; the connected ESP32 scan and simulated ID feed the same entry/exit lifecycle. Scanning a known active identity selects exit, while an identity with no active session selects entry. An RFID UID is normalized to uppercase and stored as a unique vehicle identity. Each identity may have only one active session; repeat visits create separate records with their own entry and exit times. On entry, the assigned vehicle is animated from the entrance toward its selected bay, with first-person view, floor/route status, distance, and a map waypoint. The same bay appears in live occupancy and can be followed again from the receipt. Exit closes the session and animates departure. Every one of the 2,376 modeled bays has an occupancy record, although only the five RFID spaces are wired to the physical prototype.",
+    )
+    _paragraph(
+        document,
+        "The emulated car tariff is ₹50 for the first started hour and ₹40 for each additional started hour, with a ten-minute grace period and a ₹400 cap per 24 hours. Charges are computed per session from its entry and exit timestamps and stored in paise. The tariff is illustrative; it is not presented as the mall's verified official rate. Entry and exit return a session receipt with vehicle identity, bay, timestamps, duration, tariff, and live estimate or final amount. The dashboard displays a QR code that opens the full receipt on a phone. This is a receipt link, not QR-based payment; no payment gateway or settlement is implemented. The same tariff rule applies to every identity, while session duration makes each charge specific to that vehicle's visit.",
+    )
+    _paragraph(
+        document,
+        "NSGA-II is integrated into live slot allocation and the optimizer comparison API, configured with population 48, 60 generations, crossover 0.90, and mutation 0.12. It selects a weighted compromise from a non-dominated candidate set. The benchmark compares it with GA, PSO, ACO, first-available, and exhaustive search by replaying requests captured at parking admissions during an executed SUMO/TraCI run across all 2,376 modeled candidates. It records the SUMO version, seed, network and route hashes, simulation times, raw candidate states, and Python optimizer runtimes. The allocation outcomes are actual measurements from this fictional-garage simulator run, not random objective scenarios or physical mall results. Live allocation computes personalized fairness from each normalized vehicle identity's completed sessions: for each candidate bay, it compares that driver's projected mean walking distance after assignment with the equal-weighted mean of each other vehicle's historical mean walking distance across its completed sessions. The absolute difference is the fairness cost, capped to the normalized 0–1 range; lower cost favors assignments that reduce disparity. With no completed peer history, fairness is neutral at zero. Stable SUMO identities let repeat simulated vehicles retain this history across runs. Waiting remains zero because the model has no measured queue-wait estimate. This is a software allocation proxy based on configured walking distances, not a guarantee of equitable outcomes. The tariff remains identity-neutral. The full software test suite passed 249 tests. No new physical RFID, QR-reading, payment-settlement, gate-actuation, or SUMO-throughput trial is claimed.",
+    )
+
     _heading(document, "10. Testing and Demonstration")
     physical_checklist_note = (
-        "The hardware checklist records the controller boot, Wi-Fi, and authenticated "
-        "status API evidence separately from the earlier invalid RC522 SPI probes. The user later "
-        "reported successful operation after rewiring, but no post-rewire per-component logs, "
-        "trial counts, or power measurements were captured."
+        "The post-rewire capture records two RFID reads, two successful HTTP 200 transactions, "
+        "S1 occupied at entry and free at exit, and four gate-command timestamps. These two "
+        "trials demonstrate the transaction flow; they do not establish reliability. LED output, "
+        "servo movement, and current draw were not independently measured. Slot occupancy is "
+        "derived from active RFID sessions."
         if hardware_validation
         else "The hardware scenario checklist marks physical behaviors NOT TESTED until "
         "the board-level procedures are performed."
     )
     _paragraph(
         document,
-        "Automated software coverage includes backend lifecycle retries/conflicts, no-free-slot behavior, JPEG input validation, ROI bounds, confidence smoothing, state persistence, prediction fallback/artifact compatibility, simulated demo API ordering, and the new camera-ingestion and ROI-geometry tests. The build checklist distinguishes those results from firmware compilation and physical tests. "
+        "Automated software checks cover lifecycle retries and conflicts, full-lot handling, state persistence, prediction fallback and artifact compatibility, and simulated API ordering. The build checklist reports these results separately from firmware compilation and hardware observations. "
         + physical_checklist_note,
     )
     _paragraph(
         document,
-        "A separate host-runtime smoke test copied the review database, selected the saved GRU artifact through the existing predictor setting, and called GET /api/prediction. The response was model=gru, fallback_reason=null, occupancy_ratio=0.136493 for the synthetic timeline. This verifies server-side artifact loading and inference; it is not an ESP32 measurement.",
+        "A host-runtime check copied the review database, selected the saved GRU artifact in the predictor setting, and called GET /api/prediction. The API returned model=gru, fallback_reason=null, and occupancy_ratio=0.136493 for the synthetic timeline. This confirms that the server can load the artifact and return a prediction; it is not a controller measurement.",
     )
     _paragraph(
         document,
-        "The same-host simulated integration check also confirmed /health with five configured slots, accepted three generated JPEG frames through the occupancy route, and ran a labeled simulated RFID entry that received slot S1. GA, PSO and ACO benchmark endpoints returned results. With only the short synthetic history in that isolated database, prediction correctly reported the deterministic fallback reason insufficient_history. These checks establish that software paths respond; generated images and RFID values do not establish camera or reader operation.",
+        "In a separate software-only run, /health reported five configured spaces, a simulated entry was assigned S1, and the API returned GA, PSO, ACO, and NSGA-II benchmark results for the same scenario. Because the isolated database contained too little history, prediction used the expected deterministic fallback, insufficient_history. These results check software behavior; the simulated tag does not count as a physical RFID read.",
     )
     _paragraph(
         document,
-        "For a simulated review: activate the project's virtual environment and run `make test` and `make lint`; start the API with `make run`; execute `python -m scripts.run_simulated_demo --base-url http://127.0.0.1:8000 --rfid-uid 04A1B2C3 --idempotency-key final-review-entry-001`; open http://127.0.0.1:8000/dashboard; then show `review_outputs/2026-10-15/EXPERIMENTAL_REPORT.md` and the figures under `review_outputs/2026-10-15/final_submission/figures/`. The simulated JPEGs and RFID label must be described as simulated. Do not run `make review` during the presentation because it retrains models and regenerates result files.",
+        "To repeat the software demonstration, activate the project environment, run `make test` and `make lint`, and start the API with `make run`. Then run `python -m scripts.run_simulated_demo --base-url http://127.0.0.1:8000 --rfid-uid 04A1B2C3 --idempotency-key final-review-entry-001` and open http://127.0.0.1:8000/dashboard. The experimental report and figures are in `review_outputs/2026-10-15/EXPERIMENTAL_REPORT.md` and `review_outputs/2026-10-15/final_submission/figures/`. Label this as a simulated RFID workflow. Avoid `make review` during the presentation because it retrains the models and regenerates result files.",
     )
     _paragraph(
         document,
-        "For a physical demo after wiring validation: use the private-LAN addresses in local_config.h, confirm GET /health, GET http://CAMERA-IP/health, run camera_ingest with a five-second interval, and scan one test tag. Verify status and gate action before proceeding to subsequent cards. Keep a hand-operated emergency power disconnect available for the lightweight servo fixture. The detailed startup, cleanup, and failure procedure appears in DEMO_INSTRUCTIONS.md.",
+        "For the controller demonstration, first confirm GET /health. Scan a dedicated test tag for entry, check the assigned space and controller status, then scan again and confirm that the space is free. Keep fingers clear of the supervised tabletop servo. DEMO_INSTRUCTIONS.md contains the startup, cleanup, and failure-recovery steps.",
     )
 
     _heading(document, "11. Limitations and Future Work")
     _paragraph(
         document,
-        "Primary limitations are the synthetic dataset, five-space scale, one-step horizon, generator-specific correlations, edge-density camera heuristic, absent labeled real imagery, lack of post-rewire quantitative hardware logs, and nonauthenticated HTTP control API. The user reports that the assembled tabletop rig works, but the available serial evidence predates that report. The architecture assumes a fixed camera and calibrated static ROIs. Lighting, weather, vehicle type, partial occlusion, perspective, shadows and camera motion may invalidate the baseline detector. Prediction accuracy on synthetic samples cannot establish field generalization.",
+        "The main limitations are the synthetic forecasting dataset, optimizer results from one SUMO-generated traffic run, configured rather than site-measured bay distances, zero queue-wait values, a five-space physical RFID rig alongside a modeled 2,376-bay garage, a one-step forecast horizon, patterns specific to the forecast data generator, and two RFID/API trials. The allocation benchmark is actual output from the executed simulator, but it is not a physical mall trial. Firmware logs show LED commands, but the LEDs were not checked visually. Servo travel and power draw were also not measured. Synthetic forecast accuracy cannot establish how the models will perform at an operating site.",
     )
     _paragraph(
         document,
-        "Next work should acquire permissioned, labeled images and real occupancy timelines; split evaluation by day/site and repeat seeds; compare the heuristic with a measured vision baseline; validate the AI-Thinker and controller board revisions; conduct current-limited bench tests for RFID, display, LEDs and a lightweight servo; add transport authentication for device requests before any wider network exposure; and measure field latency and availability. A real gate requires a safety-rated actuator/controller and independent interlocks; the SG90 prototype is not that system.",
+        "The next evaluation should use measured occupancy timelines, test separate days and sites, and repeat the model runs with independent seeds. Hardware work should include more RFID/API trials, direct checks of all five LEDs and servo movement, and measured current and Wi-Fi recovery time. Device requests also need transport authentication before the system is exposed beyond a trusted local network. A vehicle barrier requires a safety-rated actuator, controller, and independent interlocks; the SG90 model is only a tabletop demonstration.",
     )
 
     _heading(document, "12. Conclusion")
     _paragraph(
         document,
-        "The repository provides a reproducible software smart-parking prototype with lifecycle, occupancy, allocation, forecasting, dashboard, synthetic experiment outputs, and ESP32 controller/camera firmware plus camera ingestion and ROI calibration. The measured synthetic experiment ranks GRU lowest in test MAE among the tested predictors, while exhaustive enumeration is an efficient exact reference for five-slot allocation. These results demonstrate functioning software and an experimental workflow, not deployment performance. The user reports successful operation of the assembled tabletop hardware. Earlier serial probes predate that report, and quantitative post-rewire RFID, camera, display, LED, servo, power, and latency trials were not captured. The report separates this user-reported function from measured results and source/specification-based estimates.",
+        "This project brings together RFID entry and exit, session-based occupancy, space allocation, server-side forecasting, a browser dashboard, and ESP32 controller firmware. In the synthetic forecast test, GRU had the lowest MAE of the three neural models; for optimizer benchmarking, exhaustive enumeration provided an exact reference for each SUMO-observed allocation state. The tabletop trial completed two entry/exit transactions and recorded the change in S1 status along with API and gate-command timings. The small sample demonstrates that the components can work together, but it does not establish deployment reliability. Physical LED output, servo travel, current draw, and Wi-Fi recovery time still need direct measurement.",
     )
 
     _heading(document, "References")
     references = [
-        "[1] T. Lin, H. Rivano, and F. Le Mouël, “A Survey of Smart Parking Solutions,” IEEE Transactions on Intelligent Transportation Systems, vol. 18, no. 12, pp. 3229–3253, 2017. doi: 10.1109/TITS.2017.2685143.",
-        "[2] E. E. Tsiropoulou, J. S. Baras, S. Papavassiliou, and S. Sinha, “RFID-based smart parking management system,” Cyber-Physical Systems, vol. 3, nos. 1–4, pp. 22–41, 2017. doi: 10.1080/23335777.2017.1358765.",
-        "[3] P. R. L. de Almeida, L. S. Oliveira, A. S. Britto Jr., E. J. Silva Jr., and A. L. Koerich, “PKLot – A robust dataset for parking lot classification,” Expert Systems with Applications, vol. 42, no. 11, pp. 4937–4949, 2015. doi: 10.1016/j.eswa.2015.02.009.",
-        "[4] S. Yang, W. Ma, X. Pi, and S. Qian, “A deep learning approach to real-time parking occupancy prediction in transportation networks incorporating multiple spatio-temporal data sources,” Transportation Research Part C: Emerging Technologies, vol. 107, pp. 248–265, 2019. doi: 10.1016/j.trc.2019.08.010.",
-        "[5] D. Thomas and B. C. Kovoor, “A Genetic Algorithm Approach to Autonomous Smart Vehicle Parking system,” Procedia Computer Science, vol. 125, pp. 68–76, 2018. doi: 10.1016/j.procs.2017.12.011.",
-        "[6] S. Hochreiter and J. Schmidhuber, “Long Short-Term Memory,” Neural Computation, vol. 9, no. 8, pp. 1735–1780, 1997. doi: 10.1162/neco.1997.9.8.1735.",
-        "[7] K. Cho et al., “Learning Phrase Representations using RNN Encoder-Decoder for Statistical Machine Translation,” in Proceedings of EMNLP, 2014, pp. 1724–1734. doi: 10.3115/v1/D14-1179.",
-        "[8] A. Vaswani et al., “Attention Is All You Need,” in Advances in Neural Information Processing Systems 30, 2017. arXiv:1706.03762.",
-        "[9] Espressif Systems, “GPIO & RTC GPIO — ESP32,” ESP-IDF Programming Guide v5.1. https://docs.espressif.com/projects/esp-idf/en/v5.1/esp32/api-reference/peripherals/gpio.html (accessed 14 Oct. 2026).",
-        "[10] Espressif Systems, “ESP32-CAM / AI-Thinker camera pin map,” esp32-camera repository. https://github.com/espressif/esp32-camera/blob/master/examples/camera_example/main/camera_pinout.h (accessed 14 Oct. 2026).",
-        "[11] Smart Parking System repository, implementation and experimental outputs. https://github.com/dumbly-smart/smart-parking (accessed 14 Oct. 2026).",
-        "[12] J. Kennedy and R. Eberhart, “Particle swarm optimization,” in Proceedings of IEEE International Conference on Neural Networks, vol. 4, 1995, pp. 1942–1948. doi: 10.1109/ICNN.1995.488968.",
-        "[13] M. Dorigo, V. Maniezzo, and A. Colorni, “Ant System: Optimization by a Colony of Cooperating Agents,” IEEE Transactions on Systems, Man, and Cybernetics, Part B, vol. 26, no. 1, pp. 29–41, 1996. doi: 10.1109/3477.484436.",
-        "[14] P. R. L. de Almeida, J. H. Alves, R. S. Parpinelli, and J. P. Barddal, “A systematic review on computer vision-based parking lot management applied on public datasets,” Expert Systems with Applications, vol. 198, article 116731, 2022. doi: 10.1016/j.eswa.2022.116731.",
-        "[15] C. P. Lee, F. T. J. Leng, R. A. A. Habeeb, M. A. Amanullah, and M. H. ur Rehman, “Edge computing-enabled secure and energy-efficient smart parking: A review,” Microprocessors and Microsystems, vol. 93, article 104612, 2022. doi: 10.1016/j.micpro.2022.104612.",
-        "[16] Y. Feng, Y. Xu, Q. Hu, S. Krishnamoorthy, and Z. Tang, “Predicting vacant parking space availability zone-wisely: A hybrid deep learning approach,” Complex & Intelligent Systems, vol. 8, pp. 4145–4161, 2022. doi: 10.1007/s40747-022-00700-1.",
-        "[17] F. Zhang, K. Shang, L. Yan, H. Nan, and Z. Miao, “Prediction of Parking Space Availability Using Improved MAT-LSTM Network,” ISPRS International Journal of Geo-Information, vol. 13, no. 5, article 151, 2024. doi: 10.3390/ijgi13050151.",
-        "[18] F. J. Enríquez, J.-M. Mejía-Muñoz, G. Bravo, and O. Cruz-Mejía, “Smart Parking: Enhancing Urban Mobility with Fog Computing and Machine Learning-Based Parking Occupancy Prediction,” Applied System Innovation, vol. 7, no. 3, article 52, 2024. doi: 10.3390/asi7030052.",
-        "[19] TowerPro, “SG90 Digital,” manufacturer specifications, operating speed 0.1 s/60° at 4.8 V. https://towerpro.com.tw/product/sg90-7/ (accessed 21 Oct. 2026).",
-        "[20] NXP Semiconductors, “MFRC522 Standard performance MIFARE and NTAG frontend,” Rev. 3.9, 2016. Typical read/write distance up to 50 mm depending on antenna size and tuning. https://www.nxp.com/docs/en/data-sheet/MFRC522.pdf (accessed 21 Oct. 2026).",
-        "[21] Espressif Systems, “ESP32 Series Datasheet,” v5.3, Wi-Fi active-mode current. https://documentation.espressif.com/esp32_datasheet_en.html (accessed 21 Oct. 2026).",
-        "[22] Shenzhen Ai-Thinker Technology, “ESP32-CAM Wi-Fi+BT SoC Module Product Specification,” v1.0, 2017. https://d229kd5ey79jzj.cloudfront.net/1205/ESP32-CAM%20Product%20Specification.pdf (accessed 21 Oct. 2026).",
+        "[1] S. S. Channamallu, S. Kermanshachi, J. M. Rosenberger, and A. Pamidimukkala, “Parking occupancy prediction and analysis – a comprehensive study,” Transportation Research Procedia, vol. 73, pp. 297–304, 2023. doi: 10.1016/j.trpro.2023.11.921.",
+        "[2] S. Bilotta, L. A. Ipsaro Palesi, and P. Nesi, “Predicting Free Parking Slots via Deep Learning in Short-Mid Terms Explaining Temporal Impact of Features,” IEEE Access, vol. 11, pp. 101678–101693, 2023. doi: 10.1109/ACCESS.2023.3314660.",
+        "[3] F. Zhang, K. Shang, L. Yan, H. Nan, and Z. Miao, “Prediction of Parking Space Availability Using Improved MAT-LSTM Network,” ISPRS International Journal of Geo-Information, vol. 13, no. 5, article 151, 2024. doi: 10.3390/ijgi13050151.",
+        "[4] F. J. Enríquez, J.-M. Mejía-Muñoz, G. Bravo, and O. Cruz-Mejía, “Smart Parking: Enhancing Urban Mobility with Fog Computing and Machine Learning-Based Parking Occupancy Prediction,” Applied System Innovation, vol. 7, no. 3, article 52, 2024. doi: 10.3390/asi7030052.",
+        "[5] A. Dahiya, P. Mittal, Y. K. Sharma, U. K. Lilhore, S. Simaiya, E. Ghith, and M. Tlija, “Machine Learning-Based Prediction of Parking Space Availability in IoT-Enabled Smart Parking Management Systems,” Journal of Advanced Transportation, 2024, article 8474973. doi: 10.1155/2024/8474973.",
+        "[6] H. Kuang, K. Deng, Q. Wang, W. Ye, H. Qu, and J. Li, “Deep meta-learning approach for regional parking occupancy prediction considering heterogeneous and real-time information,” Advanced Engineering Informatics, vol. 64, article 102969, 2025. doi: 10.1016/j.aei.2024.102969.",
+        "[7] A. Kaltenbrunner, J. Ferrer, D. Moreno, et al., “A simple and explainable model for park-and-ride car park occupancy prediction,” EPJ Data Science, vol. 14, article 74, 2025. doi: 10.1140/epjds/s13688-025-00588-0.",
+        "[8] A. Durairaj, A. Baskaran, R. Janakiraman, and P. Narayanan, “An Optimized Deep Learning-Based Smart Parking Mechanism for Smart City Environment,” International Journal of Computational Intelligence Systems, vol. 18, article 290, 2025. doi: 10.1007/s44196-025-01030-z.",
+        "[9] K. Vakrinou, E. G. Mantouka, and E. Vlahogianni, “Leveraging multisource data for off-street parking occupancy prediction: a twofold analysis,” International Journal of Transportation Science and Technology, vol. 21, pp. 352–371, 2026. doi: 10.1016/j.ijtst.2025.02.005.",
+        "[10] A. Ostadi, D. Das, G. Elmamooz, and D. Nicklas, “Data Engineering for Horizon-Aware Smart Parking Systems,” Datenbank-Spektrum, vol. 26, no. 2, pp. 155–164, 2026. doi: 10.1007/s13222-026-00544-w.",
+        "[11] S. Hochreiter and J. Schmidhuber, “Long Short-Term Memory,” Neural Computation, vol. 9, no. 8, pp. 1735–1780, 1997. doi: 10.1162/neco.1997.9.8.1735.",
+        "[12] K. Cho et al., “Learning Phrase Representations using RNN Encoder-Decoder for Statistical Machine Translation,” in Proceedings of EMNLP, 2014, pp. 1724–1734. doi: 10.3115/v1/D14-1179.",
+        "[13] A. Vaswani et al., “Attention Is All You Need,” in Advances in Neural Information Processing Systems 30, 2017. arXiv:1706.03762.",
+        "[14] J. Kennedy and R. Eberhart, “Particle swarm optimization,” in Proceedings of IEEE International Conference on Neural Networks, vol. 4, 1995, pp. 1942–1948. doi: 10.1109/ICNN.1995.488968.",
+        "[15] M. Dorigo, V. Maniezzo, and A. Colorni, “Ant System: Optimization by a Colony of Cooperating Agents,” IEEE Transactions on Systems, Man, and Cybernetics, Part B, vol. 26, no. 1, pp. 29–41, 1996. doi: 10.1109/3477.484436.",
+        "[16] NXP Semiconductors, “MFRC522 Standard performance MIFARE and NTAG frontend,” Rev. 3.9, 2016. https://www.nxp.com/docs/en/data-sheet/MFRC522.pdf (accessed 26 Oct. 2026).",
+        "[17] TowerPro, “SG90 Digital,” manufacturer specifications. https://towerpro.com.tw/product/sg90-7/ (accessed 26 Oct. 2026).",
+        "[18] Espressif Systems, “ESP32 Series Datasheet,” v5.3. https://documentation.espressif.com/esp32_datasheet_en.html (accessed 26 Oct. 2026).",
     ]
     for reference in references:
         paragraph = document.add_paragraph(reference)
@@ -1062,14 +1344,14 @@ def build_report(
     _heading(document, "Dataset Availability")
     _paragraph(
         document,
-        "The privacy-safe simulated dataset archive is publicly downloadable from the project's GitHub repository. The version-pinned ZIP contains parking_raw.csv, parking_features.csv, dataset_metadata.json, and dataset documentation. A Google Drive mirror is also provided, but its current permission is restricted to the vit.ac.in Google Workspace domain; use the public GitHub link if you do not have VIT access.",
+        "The privacy-safe simulated dataset archive and project source are publicly available from GitHub. The version-pinned ZIP contains parking_raw.csv, parking_features.csv, dataset_metadata.json, and dataset documentation. The project Drive folder includes the project materials and demonstration video; access follows the folder's sharing permissions.",
     )
+    _add_hyperlink(document.add_paragraph(), "GitHub project repository", PROJECT_GITHUB_URL)
     _add_hyperlink(document.add_paragraph(), "Public dataset ZIP (GitHub)", DATASET_PUBLIC_URL)
     _add_hyperlink(
-        document.add_paragraph(), "Google Drive dataset ZIP (institution-only)", DATASET_URL
-    )
-    _add_hyperlink(
-        document.add_paragraph(), "Google Drive model artifacts (institution-only)", MODELS_URL
+        document.add_paragraph(),
+        "Project folder and demonstration video (Google Drive)",
+        PROJECT_DRIVE_FOLDER_URL,
     )
 
     report_path = output_directory / "Smart_Parking_Final_Report.docx"
@@ -1083,12 +1365,17 @@ def build_report(
         "optimization_results/optimizer_comparison.csv",
         "optimization_results/optimizer_summary.json",
         "optimization_results/benchmark_runs.csv",
+        "optimization_results/sumo_observed_scenarios.jsonl",
     )
     evidence_hashes: dict[str, dict[str, str]] = {}
     for relative_path in evidence_files:
         source_path = repository_root / REVIEW / relative_path
         target_path = evidence_directory / Path(relative_path).name
         shutil.copy2(source_path, target_path)
+        if target_path.suffix == ".csv":
+            # Keep generated submission artifacts portable and `git diff --check` clean
+            # when source CSVs use Windows line endings.
+            target_path.write_bytes(target_path.read_bytes().replace(b"\r\n", b"\n"))
         evidence_hashes[target_path.name] = {
             "source": str(Path(REVIEW) / relative_path),
             "sha256": hashlib.sha256(target_path.read_bytes()).hexdigest(),
@@ -1097,7 +1384,7 @@ def build_report(
         json.dumps(
             {
                 "generated_by": "scripts/build_final_submission.py",
-                "note": "Metric and metadata files are copied verbatim from the current checkout; the dataset download URL in the report is pinned to commit 5b480d1.",
+                "note": "Metric and metadata files are copied from the current checkout; CSV line endings are normalized to LF without changing values. The dataset download URL in the report is pinned to commit 5b480d1.",
                 "files": evidence_hashes,
             },
             indent=2,
@@ -1141,6 +1428,89 @@ def _convert_to_pdf(docx_path: Path, output_directory: Path) -> Path:
     return pdf_path
 
 
+def _build_code_appendix_report(
+    base_report: Path, output_report: Path, repository_root: Path
+) -> Path:
+    """Append the current Arduino-framework controller sources to a report copy."""
+    document = Document(base_report)
+    document.add_page_break()
+    _heading(document, "Appendix A. Current ESP32 Arduino controller source")
+    _paragraph(
+        document,
+        "This appendix reproduces the checked-in controller implementation and its public configuration template. "
+        "The example configuration contains no real Wi-Fi credentials or device token.",
+    )
+    source_files = (
+        "firmware/esp32_controller/src/main.cpp",
+        "firmware/esp32_controller/include/pins.h",
+        "firmware/esp32_controller/include/local_config.example.h",
+        "firmware/esp32_controller/platformio.ini",
+    )
+    for relative_path in source_files:
+        source = repository_root / relative_path
+        if not source.is_file():
+            continue
+        _heading(document, relative_path, level=2)
+        code = document.add_paragraph(style="No Spacing")
+        code.paragraph_format.space_after = Pt(0)
+        code.paragraph_format.line_spacing = 1.0
+        run = code.add_run(source.read_text(encoding="utf-8"))
+        run.font.name = "Consolas"
+        run.font.size = Pt(6.5)
+    document.save(output_report)
+    return output_report
+
+
+def _sync_archived_submission(repository_root: Path, output_directory: Path) -> None:
+    """Keep the dated submission copy aligned with the freshly built deliverables."""
+    archive = repository_root / REVIEW / "final_submission"
+    archive.mkdir(parents=True, exist_ok=True)
+    for filename in (
+        "Smart_Parking_Final_Report.docx",
+        "Smart_Parking_Final_Report.pdf",
+        "README.md",
+        "SUBMISSION_CHECKLIST.md",
+        "REFERENCES_VERIFIED.md",
+    ):
+        source = output_directory / filename
+        if source.is_file():
+            shutil.copy2(source, archive / filename)
+    for directory in ("figures", "evidence"):
+        source = output_directory / directory
+        if source.is_dir():
+            shutil.copytree(source, archive / directory, dirs_exist_ok=True)
+    hardware_source = repository_root / "docs/hardware/bill_of_materials.csv"
+    hardware_target = archive / "hardware/bill_of_materials.csv"
+    if hardware_source.is_file():
+        hardware_target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(hardware_source, hardware_target)
+    for filename in (
+        "hardware_overview.png",
+        "rfid_reader_closeup.png",
+        "controller_board_front.png",
+        "controller_wiring_detail.png",
+        "hardware_dashboard_evidence.png",
+        "optimizer_comparison.png",
+        "dashboard_capture.png",
+    ):
+        (archive / "figures" / filename).unlink(missing_ok=True)
+    for filename in (
+        "system_architecture.dot",
+        "system_architecture.svg",
+        "system_architecture.png",
+        "system_architecture.pdf",
+        "system_block_diagram.dot",
+        "system_block_diagram.svg",
+        "system_block_diagram.png",
+        "system_block_diagram.pdf",
+    ):
+        source = repository_root / "docs/hardware" / filename
+        if source.is_file():
+            target = archive / "hardware" / filename
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source, target)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repository-root", type=Path, default=Path.cwd())
@@ -1148,6 +1518,19 @@ def main() -> int:
     parser.add_argument("--docx-only", action="store_true")
     args = parser.parse_args()
     path = build_report(args.repository_root, args.output_directory, convert_pdf=not args.docx_only)
+    if args.output_directory.resolve() == (args.repository_root / "output/final_submission").resolve():
+        repository_root = args.repository_root.resolve()
+        output_directory = args.output_directory.resolve()
+        _sync_archived_submission(repository_root, output_directory)
+        clean_report = repository_root / "Smart_Parking_Final_Project_Writeup_Clean.docx"
+        shutil.copy2(path, clean_report)
+        pdf_path = output_directory / "Smart_Parking_Final_Report.pdf"
+        if pdf_path.is_file():
+            shutil.copy2(pdf_path, repository_root / "Smart_Parking_Final_Project_Writeup_Clean.pdf")
+        code_report = repository_root / "smart_parking_project_report_with_arduino_code.docx"
+        _build_code_appendix_report(path, code_report, repository_root)
+        if pdf_path.is_file():
+            _convert_to_pdf(code_report, repository_root)
     print(path)
     if not args.docx_only:
         print(args.output_directory / "Smart_Parking_Final_Report.pdf")

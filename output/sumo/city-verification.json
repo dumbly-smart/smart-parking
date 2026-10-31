@@ -1,0 +1,36 @@
+{
+  "duration_seconds": 1800,
+  "city_vehicle_ids": 1478,
+  "garage_vehicle_ids": 352,
+  "city_garage_transfers": 177,
+  "deck_ids_seen": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6
+  ],
+  "ramps_seen": [
+    "down_2_1",
+    "down_3_2",
+    "down_4_3",
+    "down_5_4",
+    "down_6_5",
+    "up_1_2",
+    "up_2_3",
+    "up_3_4",
+    "up_4_5",
+    "up_5_6"
+  ],
+  "min_elevation": -8.4,
+  "max_elevation": 12.6,
+  "city_extents": [
+    -555.2,
+    548.3067447678645,
+    -529.1350558225685,
+    528.9989097831275
+  ],
+  "signal_controllers": 16,
+  "controllers_with_changing_states": 16
+}

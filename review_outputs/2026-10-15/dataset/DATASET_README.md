@@ -44,7 +44,7 @@ Continuous features are standardized using training-partition values only. Bound
 
 ## Limitations
 
-All observations are simulated. The generator does not model a measured site, actual weather, camera accuracy, physical throughput, or real waiting times. Five-slot results may not generalize to other facilities.
+All observations are simulated. The generator does not model a measured site, actual weather, site-specific occupancy accuracy, physical throughput, or real waiting times. Five-slot results may not generalize to other facilities.
 
 ## Reproduction and checksums
 

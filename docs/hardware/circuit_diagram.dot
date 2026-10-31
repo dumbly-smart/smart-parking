@@ -2,15 +2,13 @@ digraph schematic {
   graph [rankdir=LR, bgcolor=white, pad=0.25, nodesep=0.36, ranksep=0.55, fontname="Helvetica", labelloc=t, label="Electrical connection schematic — proposed bench assembly, not physically tested", fontsize=15];
   node [shape=box, style=solid, color=black, fontcolor=black, fontname="Helvetica", fontsize=9, margin="0.10,0.06", penwidth=1];
   edge [color=black, fontcolor=black, fontname="Helvetica", fontsize=8, arrowsize=0.6, penwidth=1];
-  esp [label="ESP32 DevKit\n3V3 · GND\nGPIO 4,13,14,18,19,21,22,23,25,26,27,32,33"];
-  rfid [label="J1 RC522\nVCC=3V3\nGND\nSCK=18 · MISO=19\nMOSI=23 · SS=13\nRST=4"];
+  esp [label="ESP32 DevKit\n3V3 · GND\nGPIO 4,5,14,18,19,21,22,23,25,26,27,32,33"];
+  rfid [label="J1 RC522\nVCC=3V3\nGND\nSCK=18 · MISO=19\nMOSI=23 · SS=5\nRST=4"];
   oled [label="J2 SSD1306 OLED\nVCC=3V3 · GND\nSDA=21 · SCL=22\n3V3 pull-ups only"];
   servo [label="J3 SG90 servo\nSignal=GPIO14\n+5V from external supply\nGND common"];
   servo5 [label="PS1 regulated 5V\nservo supply ≥1A initial\ncheck servo stall current"];
-  cam [label="ESP32-CAM AI-Thinker\nOV2640 on-board connections\n5V input from separate supply\nGND common reference"];
-  cam5 [label="PS2 regulated 5V\ncamera board supply"];
   usb [label="USB supply\nESP32 DevKit input"];
-  gnd [shape=plaintext, label="GND reference: controller, RC522, OLED, servo supply/output, camera supply/board"];
+  gnd [shape=plaintext, label="GND reference: controller, RC522, OLED, servo supply/output"];
   subgraph cluster_leds { label="Five independent active-high indicators"; color=black; style=solid;
     l1 [label="GPIO25 ─ R1 330Ω ─ LED1 ─ GND"];
     l2 [label="GPIO26 ─ R2 330Ω ─ LED2 ─ GND"];
@@ -23,15 +21,12 @@ digraph schematic {
   esp -> oled [label="I²C"];
   esp -> servo [label="3.3V PWM logic"];
   servo5 -> servo [label="+5V motor supply"];
-  cam5 -> cam [label="+5V board input"];
   esp -> l1; esp -> l2; esp -> l3; esp -> l4; esp -> l5;
   esp -> gnd [label="GND"];
   rfid -> gnd [label="GND"];
   oled -> gnd [label="GND"];
   servo -> gnd [label="GND"];
   servo5 -> gnd [label="negative"];
-  cam -> gnd [label="GND"];
-  cam5 -> gnd [label="negative"];
-  warning [shape=note, label="Never connect servo motor power to an ESP32 GPIO or 3V3 rail.\nKeep PS1 and PS2 +5V outputs isolated.\nUse a lightweight, supervised tabletop gate; this is not a vehicle barrier."];
+  warning [shape=note, label="Never connect servo motor power to an ESP32 GPIO or 3V3 rail.\nUse a lightweight, supervised tabletop gate; this is not a vehicle barrier."];
   servo -> warning [style=dashed, arrowhead=none];
 }

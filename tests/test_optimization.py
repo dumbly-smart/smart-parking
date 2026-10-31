@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sqlite3
 from pathlib import Path
 
@@ -10,6 +11,8 @@ from pydantic import ValidationError
 from backend.app.config import ObjectiveWeights, Settings
 from backend.app.db import Database
 from backend.app.main import create_app
+from backend.app.models.parking import VehicleOperationRequest
+from backend.app.services.parking import ParkingService
 from optimization.aco import AntColonyOptimizer
 from optimization.fitness import weighted_cost
 from optimization.ga import GeneticAlgorithmOptimizer
@@ -20,6 +23,7 @@ from optimization.models import (
     PersistedOptimizerRun,
     SlotCandidate,
 )
+from optimization.nsga2 import NSGA2Optimizer
 from optimization.pso import ParticleSwarmOptimizer
 
 
@@ -181,10 +185,17 @@ def test_allocation_result_is_immutable() -> None:
 
 
 @pytest.mark.parametrize(
-    "optimizer",
-    [GeneticAlgorithmOptimizer(), ParticleSwarmOptimizer(), AntColonyOptimizer()],
+    "optimizer, expected_iterations",
+    [
+        (GeneticAlgorithmOptimizer(), 12),
+        (ParticleSwarmOptimizer(), 12),
+        (AntColonyOptimizer(), 12),
+        (NSGA2Optimizer(), 60),
+    ],
 )
-def test_optimizers_are_deterministic_and_never_choose_occupied_slot(optimizer: object) -> None:
+def test_optimizers_are_deterministic_and_never_choose_occupied_slot(
+    optimizer: object, expected_iterations: int
+) -> None:
     first = optimizer.optimize(request())  # type: ignore[attr-defined]
     second = optimizer.optimize(request())  # type: ignore[attr-defined]
 
@@ -194,7 +205,7 @@ def test_optimizers_are_deterministic_and_never_choose_occupied_slot(optimizer: 
         exclude={"runtime_ms"}
     )
     assert first.best_cost == pytest.approx(expected_costs[first.chosen_slot_id])
-    assert first.iterations == 12
+    assert first.iterations == expected_iterations
     assert first.scenario_id == "same-scenario"
     assert first.runtime_ms >= 0
     assert first.objective_breakdown.distance > 0
@@ -202,7 +213,12 @@ def test_optimizers_are_deterministic_and_never_choose_occupied_slot(optimizer: 
 
 @pytest.mark.parametrize(
     "optimizer",
-    [GeneticAlgorithmOptimizer(), ParticleSwarmOptimizer(), AntColonyOptimizer()],
+    [
+        GeneticAlgorithmOptimizer(),
+        ParticleSwarmOptimizer(),
+        AntColonyOptimizer(),
+        NSGA2Optimizer(),
+    ],
 )
 def test_optimizers_reject_when_every_slot_is_occupied(optimizer: object) -> None:
     with pytest.raises(NoAvailableSlotError):
@@ -210,11 +226,84 @@ def test_optimizers_reject_when_every_slot_is_occupied(optimizer: object) -> Non
 
 
 def test_one_iteration_runs_algorithm_search_instead_of_presolving() -> None:
-    limited = request().model_copy(update={"seed": 0, "iterations": 1})
+    limited = request().model_copy(update={"seed": 0, "iterations": 1, "generations": 1})
 
     assert GeneticAlgorithmOptimizer().optimize(limited).chosen_slot_id == 5
     assert ParticleSwarmOptimizer().optimize(limited).chosen_slot_id == 4
     assert AntColonyOptimizer().optimize(limited).chosen_slot_id == 2
+    assert NSGA2Optimizer().optimize(limited).iterations == 1
+
+
+def test_live_allocation_personalizes_fairness_from_unique_vehicle_history(
+    tmp_path: Path,
+) -> None:
+    config_path = tmp_path / "fairness.yaml"
+    config_path.write_text(
+        """allocation:
+  weights:
+    distance: 0.10
+    congestion: 0.00
+    waiting: 0.00
+    fairness: 0.90
+slots:
+  - {id: 1, name: Near, walking_distance: 0.0, zone: shared}
+  - {id: 2, name: Far, walking_distance: 1.0, zone: shared}
+""",
+        encoding="utf-8",
+    )
+    settings = Settings(
+        database_url=f"sqlite:///{tmp_path / 'fairness.db'}",
+        parking_config_path=config_path,
+        selected_optimizer="nsga2",
+    )
+    database = Database(settings.database_path)
+    database.initialize(settings.parking.slots)
+    with database.connect() as connection:
+        favored_id = int(
+            connection.execute(
+                "INSERT INTO vehicles (rfid_uid) VALUES ('FAVORED') RETURNING id"
+            ).fetchone()[0]
+        )
+        disadvantaged_id = int(
+            connection.execute(
+                "INSERT INTO vehicles (rfid_uid) VALUES ('DISADVANTAGED') RETURNING id"
+            ).fetchone()[0]
+        )
+        for vehicle_id, slot_id, key in (
+            (favored_id, 1, "favored-near-visit"),
+            (disadvantaged_id, 2, "disadvantaged-far-visit"),
+        ):
+            connection.execute(
+                """INSERT INTO parking_sessions (
+                    vehicle_id, slot_id, entry_idempotency_key, entered_at, exited_at
+                ) VALUES (?, ?, ?, '2026-01-01T10:00:00Z', '2026-01-01T11:00:00Z')""",
+                (vehicle_id, slot_id, key),
+            )
+
+    service = ParkingService(
+        database,
+        settings.selected_optimizer,
+        settings.parking.allocation.weights,
+    )
+    favored_entry = service.enter(
+        VehicleOperationRequest(rfid_uid="favored", idempotency_key="favored-next")
+    )
+    with database.connect() as connection:
+        favored_breakdown = json.loads(
+            connection.execute(
+                "SELECT objective_breakdown FROM optimizer_runs ORDER BY id DESC LIMIT 1"
+            ).fetchone()[0]
+        )
+    service.exit(VehicleOperationRequest(rfid_uid="favored", idempotency_key="favored-exit"))
+    disadvantaged_entry = service.enter(
+        VehicleOperationRequest(
+            rfid_uid="disadvantaged", idempotency_key="disadvantaged-next"
+        )
+    )
+
+    assert favored_entry.slot_id == 2
+    assert favored_breakdown["fairness"] == pytest.approx(0.5)
+    assert disadvantaged_entry.slot_id == 1
 
 
 def write_config(path: Path) -> None:
@@ -294,11 +383,11 @@ def test_optimizer_benchmark_api_persists_identical_scenario_results(tmp_path: P
 
     assert run_response.status_code == 200
     results = run_response.json()["results"]
-    assert {result["algorithm"] for result in results} == {"ga", "pso", "aco"}
+    assert {result["algorithm"] for result in results} == {"ga", "pso", "aco", "nsga2"}
     assert {result["scenario_id"] for result in results} == {"same-scenario"}
     assert {result["chosen_slot_id"] for result in results} <= {2, 3, 4, 5}
     assert list_response.status_code == 200
-    assert len(list_response.json()["runs"]) == 3
+    assert len(list_response.json()["runs"]) == 4
 
 
 def test_allocation_api_returns_structured_full_capacity_error(tmp_path: Path) -> None:

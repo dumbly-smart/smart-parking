@@ -71,16 +71,16 @@ def test_controller_adds_bearer_token_without_logging_it() -> None:
 
 def test_controller_reports_rc522_spi_presence_at_boot() -> None:
     setup = function_body("void setup()", "void loop()")
-    low_clock_read = function_body("byte readRfidVersionAtLowClock()", "HttpResult requestHttp(")
+    low_clock_read = function_body("byte readRfidVersionAtLowClock(", "HttpResult requestHttp(")
     bit_bang_read = function_body(
-        "byte readRfidVersionBitBanged()", "byte readRfidVersionAtLowClock()"
+        "byte readRfidVersionBitBanged()", "byte readRfidVersionAtLowClock("
     )
     bit_bang_transfer = function_body(
         "byte transferRfidByteBitBanged(byte value)", "byte readRfidVersionBitBanged()"
     )
 
     assert "rfid.PCD_ReadRegister(MFRC522::VersionReg)" in setup
-    assert "readRfidVersionAtLowClock()" in setup
+    assert "readRfidVersionAtLowClock(Pins::RfidSs)" in setup
     assert "readRfidVersionBitBanged()" in setup
     assert "digitalRead(Pins::RfidMiso)" in bit_bang_transfer
     assert "digitalWrite(Pins::RfidSs, LOW)" in bit_bang_read
@@ -94,3 +94,50 @@ def test_controller_reports_rc522_spi_presence_at_boot() -> None:
     assert 'const bool resetPinHigh = digitalRead(Pins::RfidReset) == HIGH' in setup
     assert 'readerMetric["reset_pin_high"] = resetPinHigh' in setup
     assert 'readerMetric["miso_idle_high"] = misoIdleHigh' in setup
+
+
+def test_controller_uses_pdf_example_rc522_chip_select_pin() -> None:
+    setup = function_body("void setup()", "void loop()")
+    pins = (ROOT / "firmware/esp32_controller/include/pins.h").read_text(encoding="utf-8")
+
+    assert "constexpr uint8_t RfidSs = 5;" in pins
+    assert "constexpr uint8_t RfidReset = 4;" in pins
+    assert "constexpr uint8_t RfidSck = 18;" in pins
+    assert "constexpr uint8_t RfidMiso = 19;" in pins
+    assert "constexpr uint8_t RfidMosi = 23;" in pins
+    assert "SPI.begin(Pins::RfidSck, Pins::RfidMiso, Pins::RfidMosi, Pins::RfidSs)" in setup
+    assert "constexpr uint8_t SlotLeds[] = {25, 26, 27, 32, 33};" in pins
+    assert "constexpr uint8_t I2cSda = 21;" in pins
+    assert "constexpr uint8_t I2cScl = 22;" in pins
+
+
+def test_controller_self_tests_each_pdf_led_output_at_boot() -> None:
+    setup = function_body("void setup()", "void loop()")
+    led_test = function_body("void runLedSelfTest()", "void refreshLeds()")
+
+    assert "runLedSelfTest();" in setup
+    assert "for (size_t index = 0; index < Pins::SlotCount; ++index)" in led_test
+    assert "digitalWrite(pin, HIGH)" in led_test
+    assert "digitalWrite(pin, LOW)" in led_test
+    assert "led_self_test" in led_test
+
+
+def test_controller_reports_occupancy_led_commands_without_exposing_vehicle_data() -> None:
+    refresh = function_body("void refreshLeds()", "bool parseStatus(")
+
+    assert "Serial.printf" in refresh
+    assert "slotState.occupied[index]" in refresh
+    assert "Pins::SlotLeds[index]" in refresh
+    assert "commanded_on" in refresh
+    assert "pendingUid" not in refresh
+
+
+def test_controller_wakes_halted_rfid_tag_before_reading_serial() -> None:
+    poll = function_body("void pollCard()", "void updateWifi()")
+    detect = function_body("bool cardPresentForScan()", "void pollCard()")
+
+    assert "PICC_IsNewCardPresent()" in detect
+    assert "PICC_WakeupA(atqa, &atqaSize)" in detect
+    assert "STATUS_OK" in detect and "STATUS_COLLISION" in detect
+    assert "cardPresentForScan()" in poll
+    assert "PICC_ReadCardSerial()" in poll

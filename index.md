@@ -1,53 +1,35 @@
 # Smart Parking
 
-Smart Parking is a hardware-independent smart parking prototype with a
-FastAPI/SQLite backend, deterministic occupancy demos, optimizer comparisons,
-and privacy-preserving occupancy prediction.
+Smart Parking is a hardware-independent smart parking prototype with a FastAPI/SQLite backend, RFID session management, optimizer comparisons, and occupancy forecasting. Slot occupancy is derived from confirmed entry and exit transactions.
 
 ## Start here
 
 - [README](README.md) — installation, API examples, and local commands
-- [Architecture](architecture.md) — system components and data flow
+- [Architecture](architecture.md) — components and data flow
 - [Decisions](decisions.md) — recorded architecture decisions
-- [Progress](progress.md) — milestone status and verification evidence
-- [Original design](2026-09-03-smart-parking-design.md) — project design
+- [Progress](progress.md) — milestones and verification evidence
+- [Final report](output/final_submission/Smart_Parking_Final_Report.pdf)
 
 ## Architecture at a glance
 
 ```text
-Camera / RFID clients
-          |
-       FastAPI
-          |
-   SQLite persistence
-      /         \
- Allocation     Lifecycle
-      \         /
-       Prediction
-          |
-  PreparedDataset
-          |
- LSTM · GRU · Transformer
+RFID tag -> ESP32 controller -> FastAPI -> SQLite
+                                  |           |
+                       Allocation and prediction
+                                  |
+                         3D dashboard and LEDs
 ```
 
-The backend supports configurable parking slots, atomic parking lifecycle
-operations, deterministic camera occupancy detection, and optimizer-backed
-slot allocation. RFID identifiers remain inside the lifecycle boundary.
+The controller sends idempotent entry and exit requests. The server maintains active sessions and slot state, while the dashboard visualizes committed parking events.
 
 ## Prediction workflow
 
-1. Seed deterministic five-minute demo history with
-   `scripts.seed_prediction_demo_data`.
-2. Build one immutable `PreparedDataset` using the shared preprocessing
-   contract.
-3. Train and compare LSTM, GRU, and temporal Transformer models with
-   `scripts.train_prediction_models`.
+1. Seed deterministic five-minute demo history with `scripts.seed_prediction_demo_data`.
+2. Build one immutable `PreparedDataset` using the shared preprocessing contract.
+3. Train and compare LSTM, GRU, and temporal Transformer models with `scripts.train_prediction_models`.
 4. Publish content-addressed model artifacts and validated JSON manifests.
 
-All models use the same chronological 70/15/15 split, twelve-step history, and
-next-five-minute occupancy target. GRU is the current affordable deployment
-candidate; final selection should use measured quality and latency on the target
-machine.
+All models use the same chronological 70/15/15 split, twelve-step history, and next-five-minute occupancy target.
 
 ## Quick start
 
@@ -58,17 +40,3 @@ make test
 make lint
 make run
 ```
-
-The API is available at `http://127.0.0.1:8000`; check `/health` after startup.
-The optional TensorFlow dependency is required for real model training:
-
-```bash
-.venv/bin/python -m pip install -e '.[ml]'
-```
-
-## Current status
-
-Shared prediction preprocessing, deterministic demo data, model comparison,
-evaluation, artifact manifests, persisted predictor comparisons, and runtime
-forecast APIs are implemented. See [progress.md](progress.md) for the current
-verification evidence and remaining dashboard work.

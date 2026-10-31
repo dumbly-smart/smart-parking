@@ -1,10 +1,8 @@
 # Known limitations
 
-- No ESP32, ESP32-CAM, RC522, OLED, LEDs, servo, camera scene or assembled wiring was available for physical testing. Firmware compilation is not hardware validation.
-- The pin map is a proposed ESP32 DevKit/WROOM-32 mapping and camera firmware explicitly targets AI-Thinker ESP32-CAM. Confirm exact board revisions before wiring.
-- Backend hardware endpoints have no authentication layer. Keep them on a trusted local network and never expose them publicly.
-- The camera uses a fixed-ROI edge-density heuristic. No labeled real-camera dataset or classification-quality measurement exists.
-- The forecasting corpus is deterministic synthetic data. The models run on the server; no ESP32 inference, power or real-time hardware benchmark is claimed.
-- Gate operation is a hobby-servo demonstration only, not a safety-rated barrier. Power loss cannot guarantee a mechanical closed position.
-- The professor's base paper template was not present in the repository; the generated report is a conventional single-column academic format.
-- The Google Drive mirror is institution-restricted; the report also provides a public, version-pinned GitHub ZIP download for reviewers without VIT access.
+- The synthetic parking data is reproducible but does not estimate a specific facility's demand.
+- The predictor comparison uses one generated corpus and its chronological split; field accuracy is unknown.
+- Five spaces are a small search space where exact enumeration is a strong reference for heuristic optimizers.
+- Physical controller observations contain two RFID/API transactions; they do not estimate long-run reliability.
+- LED light output, servo travel, current draw, and controlled Wi-Fi recovery have not been independently measured.
+- The tabletop servo is a demonstration actuator and is not suitable for a vehicle barrier.

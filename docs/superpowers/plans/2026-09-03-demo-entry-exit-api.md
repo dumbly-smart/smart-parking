@@ -19,7 +19,7 @@
 - Occupied slots must never be assigned.
 - Entry and exit persistence must each be atomic under `BEGIN IMMEDIATE`.
 - Successful gate actions are returned only after the transaction commits.
-- Camera occupancy, prediction, dashboard, and firmware work remain out of scope.
+- Prediction, dashboard, and firmware work remain out of scope.
 
 ---
 

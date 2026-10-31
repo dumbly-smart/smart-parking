@@ -8,8 +8,7 @@ an exit safely, and inspect the current five-slot state. The implementation
 uses the configured optimizer and the existing SQLite tables while preserving
 the invariant that an occupied slot is never assigned.
 
-This milestone does not add camera occupancy updates, prediction, dashboard
-views, or firmware integration.
+This milestone does not add prediction, dashboard views, or firmware integration.
 
 ## Architecture
 

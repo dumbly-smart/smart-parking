@@ -1,4 +1,4 @@
-"""Drive the hardware-independent camera, lifecycle, allocation, and prediction demo."""
+"""Drive a deterministic RFID lifecycle, allocation, and prediction demo."""
 
 from __future__ import annotations
 
@@ -6,12 +6,9 @@ import argparse
 import json
 import sys
 from collections import Counter
-from io import BytesIO
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
-
-from PIL import Image
 
 DEFAULT_WEIGHTS = {"distance": 0.35, "congestion": 0.30, "waiting": 0.20, "fairness": 0.15}
 DEMO_SEED = 20260912
@@ -27,7 +24,6 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--base-url", default="http://127.0.0.1:8000")
     parser.add_argument("--rfid-uid", default="DEMO-CARD-001")
     parser.add_argument("--idempotency-key", default="simulated-demo-entry-001")
-    parser.add_argument("--camera-frames", type=int, default=3)
     return parser
 
 
@@ -46,37 +42,6 @@ def request_json(
         raise DemoRequestError("demo request failed") from error
     if not isinstance(loaded, dict):
         raise DemoRequestError("demo API response must be a JSON object")
-    return loaded
-
-
-def _synthetic_jpeg() -> bytes:
-    image = Image.new("RGB", (1280, 720), color="white")
-    buffer = BytesIO()
-    image.save(buffer, format="JPEG", quality=85)
-    return buffer.getvalue()
-
-
-def post_camera_frame(base_url: str, image: bytes) -> dict[str, Any]:
-    boundary = "----smart-parking-demo-boundary"
-    body = b"".join(
-        (
-            f"--{boundary}\r\n".encode("ascii"),
-            b'Content-Disposition: form-data; name="image"; filename="demo.jpg"\r\n',
-            b"Content-Type: image/jpeg\r\n\r\n",
-            image,
-            f"\r\n--{boundary}--\r\n".encode("ascii"),
-        )
-    )
-    request = Request(f"{base_url.rstrip('/')}/api/camera/occupancy", data=body)
-    request.add_header("Accept", "application/json")
-    request.add_header("Content-Type", f"multipart/form-data; boundary={boundary}")
-    try:
-        with urlopen(request, timeout=10) as response:
-            loaded = json.load(response)
-    except (HTTPError, URLError, TimeoutError) as error:
-        raise DemoRequestError("camera demo request failed") from error
-    if not isinstance(loaded, dict):
-        raise DemoRequestError("camera API response must be a JSON object")
     return loaded
 
 
@@ -109,12 +74,7 @@ def allocation_payload(status: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def run_demo(
-    base_url: str, rfid_uid: str, idempotency_key: str, camera_frames: int
-) -> dict[str, Any]:
-    if camera_frames < 1:
-        raise DemoRequestError("camera frames must be positive")
-    camera = [post_camera_frame(base_url, _synthetic_jpeg()) for _ in range(camera_frames)]
+def run_demo(base_url: str, rfid_uid: str, idempotency_key: str) -> dict[str, Any]:
     entry = request_json(
         base_url,
         "/api/vehicle/entry",
@@ -133,7 +93,6 @@ def run_demo(
     if not isinstance(results, list):
         raise DemoRequestError("allocation results must be a list")
     return {
-        "camera_frames": len(camera),
         "entry_slot": entry["slot_name"],
         "optimizer_results": [
             {
@@ -164,7 +123,6 @@ def main(argv: list[str] | None = None) -> int:
             arguments.base_url,
             arguments.rfid_uid,
             arguments.idempotency_key,
-            arguments.camera_frames,
         )
     except DemoRequestError as error:
         print(json.dumps({"error": str(error)}), file=sys.stderr)

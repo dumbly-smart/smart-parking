@@ -161,12 +161,15 @@ byte readRfidVersionBitBanged() {
   return version;
 }
 
-byte readRfidVersionAtLowClock() {
+byte readRfidVersionAtLowClock(uint8_t chipSelectPin) {
+  pinMode(chipSelectPin, OUTPUT);
+  digitalWrite(Pins::RfidSs, HIGH);
+  digitalWrite(chipSelectPin, HIGH);
   SPI.beginTransaction(SPISettings(250000, MSBFIRST, SPI_MODE0));
-  digitalWrite(Pins::RfidSs, LOW);
+  digitalWrite(chipSelectPin, LOW);
   SPI.transfer(0x80 | MFRC522::VersionReg);
   const byte version = SPI.transfer(0x00);
-  digitalWrite(Pins::RfidSs, HIGH);
+  digitalWrite(chipSelectPin, HIGH);
   SPI.endTransaction();
   return version;
 }
@@ -204,12 +207,34 @@ void setUnknownLeds() {
   slotState.known = false;
 }
 
+void runLedSelfTest() {
+  for (size_t index = 0; index < Pins::SlotCount; ++index) {
+    const uint8_t pin = Pins::SlotLeds[index];
+    digitalWrite(pin, HIGH);
+    Serial.printf("{\"event\":\"led_self_test\",\"slot\":%u,\"gpio\":%u}\n",
+                  static_cast<unsigned>(index + 1), static_cast<unsigned>(pin));
+    delay(250);
+    digitalWrite(pin, LOW);
+    delay(100);
+  }
+}
+
 void refreshLeds() {
+  static bool previousKnown = false;
+  static bool previousOutputs[Pins::SlotCount] = {};
   const bool blink = ((millis() / 400) % 2) == 0;
   for (size_t index = 0; index < Pins::SlotCount; ++index) {
     const bool on = slotState.known ? slotState.occupied[index] : blink;
     digitalWrite(Pins::SlotLeds[index], on ? HIGH : LOW);
+    if (slotState.known && (!previousKnown || previousOutputs[index] != on)) {
+      Serial.printf(
+          "{\"event\":\"slot_led\",\"slot\":%u,\"gpio\":%u,\"occupied\":%s,\"commanded_on\":%s}\n",
+          static_cast<unsigned>(index + 1), static_cast<unsigned>(Pins::SlotLeds[index]),
+          slotState.occupied[index] ? "true" : "false", on ? "true" : "false");
+    }
+    previousOutputs[index] = on;
   }
+  previousKnown = slotState.known;
 }
 
 bool parseStatus(const String &body, SlotState &result) {
@@ -232,7 +257,7 @@ bool parseStatus(const String &body, SlotState &result) {
 
 bool fetchStatus(SlotState &result) {
   if (WiFi.status() != WL_CONNECTED) return false;
-  HttpResult response = requestHttp(backendUrl("/api/parking/status"), "GET");
+  HttpResult response = requestHttp(backendUrl("/api/parking/device-status"), "GET");
   if (response.code != HTTP_CODE_OK || !parseStatus(response.body, result)) return false;
   return true;
 }
@@ -240,6 +265,11 @@ bool fetchStatus(SlotState &result) {
 bool activeSessionForUid(const String &body, const String &uid, int *slotId = nullptr) {
   JsonDocument document;
   if (deserializeJson(document, body) != DeserializationError::Ok) return false;
+  JsonObject vehicle = document["vehicle"].as<JsonObject>();
+  if (!vehicle.isNull() && vehicle["rfid_uid"].is<const char *>() && uppercase(vehicle["rfid_uid"].as<String>()) == uid) {
+    if (slotId) *slotId = vehicle["id"] | 0;
+    return true;
+  }
   JsonArray slots = document["slots"].as<JsonArray>();
   if (slots.isNull()) return false;
   for (JsonObject slot : slots) {
@@ -253,7 +283,7 @@ bool activeSessionForUid(const String &body, const String &uid, int *slotId = nu
 }
 
 bool statusForUid(const String &uid, bool &parked) {
-  HttpResult response = requestHttp(backendUrl("/api/parking/status"), "GET");
+  HttpResult response = requestHttp(backendUrl((String("/api/parking/device-status?rfid_uid=") + uid).c_str()), "GET");
   if (response.code != HTTP_CODE_OK) return false;
   SlotState parsed;
   if (!parseStatus(response.body, parsed)) return false;
@@ -327,7 +357,7 @@ bool beginOperation(const String &uid, const String &operation) {
 }
 
 bool verifyEntryCommit(const String &uid, int expectedSlotId) {
-  HttpResult status = requestHttp(backendUrl("/api/parking/status"), "GET");
+  HttpResult status = requestHttp(backendUrl((String("/api/parking/device-status?rfid_uid=") + uid).c_str()), "GET");
   if (status.code != HTTP_CODE_OK) return false;
   int actualSlotId = 0;
   if (!activeSessionForUid(status.body, uid, &actualSlotId) || actualSlotId != expectedSlotId)
@@ -340,16 +370,9 @@ bool verifyEntryCommit(const String &uid, int expectedSlotId) {
 }
 
 bool verifyExitCommit(const String &uid) {
-  HttpResult status = requestHttp(backendUrl("/api/parking/status"), "GET");
+  HttpResult status = requestHttp(backendUrl((String("/api/parking/device-status?rfid_uid=") + uid).c_str()), "GET");
   if (status.code != HTTP_CODE_OK) return false;
-  JsonDocument document;
-  if (deserializeJson(document, status.body) != DeserializationError::Ok) return false;
-  JsonArray slots = document["slots"].as<JsonArray>();
-  if (slots.isNull()) return false;
-  for (JsonObject slot : slots) {
-    if (slot["rfid_uid"].is<const char *>() &&
-        uppercase(slot["rfid_uid"].as<String>()) == uid) return false;
-  }
+  if (activeSessionForUid(status.body, uid)) return false;
   SlotState parsed;
   if (!parseStatus(status.body, parsed)) return false;
   slotState = parsed;
@@ -431,7 +454,7 @@ void processPendingOperation() {
     if (pendingType == "entry") {
       const int slotId = result["slot_id"] | 0;
       const String slotName = result["slot_name"] | "";
-      if (slotId >= 1 && slotId <= static_cast<int>(Pins::SlotCount) && slotName.length() &&
+      if (slotId >= 1 && slotName.length() &&
           verifyEntryCommit(pendingUid, slotId)) {
         assignedSlotId = slotId;
         assignedSlotName = slotName;
@@ -481,6 +504,14 @@ bool cardStillOnReader() {
   return false;
 }
 
+bool cardPresentForScan() {
+  if (rfid.PICC_IsNewCardPresent()) return true;
+  byte atqa[2];
+  byte atqaSize = sizeof(atqa);
+  const MFRC522::StatusCode status = rfid.PICC_WakeupA(atqa, &atqaSize);
+  return status == MFRC522::STATUS_OK || status == MFRC522::STATUS_COLLISION;
+}
+
 void pollCard() {
   if (!cardArmed) {
     if (cardStillOnReader()) {
@@ -496,7 +527,7 @@ void pollCard() {
     return;
   }
 
-  if (!rfid.PICC_IsNewCardPresent() || !rfid.PICC_ReadCardSerial()) return;
+  if (!cardPresentForScan() || !rfid.PICC_ReadCardSerial()) return;
   scanReceivedAtMs = millis();
   cardArmed = false;
   absenceTiming = false;
@@ -580,6 +611,7 @@ void setup() {
     digitalWrite(pin, LOW);
     pinMode(pin, OUTPUT);
   }
+  runLedSelfTest();
   refreshLeds();  // Blinking means availability is unknown until a status fetch succeeds.
 
   Wire.begin(Pins::I2cSda, Pins::I2cScl);
@@ -592,7 +624,7 @@ void setup() {
   const byte readerVersion = rfid.PCD_ReadRegister(MFRC522::VersionReg);
   pinMode(Pins::RfidSs, OUTPUT);
   digitalWrite(Pins::RfidSs, HIGH);
-  const byte lowClockVersion = readRfidVersionAtLowClock();
+  const byte lowClockVersion = readRfidVersionAtLowClock(Pins::RfidSs);
   pinMode(Pins::RfidMiso, INPUT_PULLUP);
   const bool misoIdleHigh = digitalRead(Pins::RfidMiso) == HIGH;
   const bool resetPinHigh = digitalRead(Pins::RfidReset) == HIGH;

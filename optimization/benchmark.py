@@ -6,12 +6,14 @@ from backend.app.db import Database
 from optimization.aco import AntColonyOptimizer
 from optimization.ga import GeneticAlgorithmOptimizer
 from optimization.models import AllocationRequest, AllocationResult, Optimizer
+from optimization.nsga2 import NSGA2Optimizer
 from optimization.pso import ParticleSwarmOptimizer
 
 OPTIMIZERS: dict[str, Optimizer] = {
     "ga": GeneticAlgorithmOptimizer(),
     "pso": ParticleSwarmOptimizer(),
     "aco": AntColonyOptimizer(),
+    "nsga2": NSGA2Optimizer(),
 }
 
 
@@ -20,7 +22,7 @@ class BenchmarkRunner:
         self.database = database
 
     def run(
-        self, request: AllocationRequest, algorithms: Iterable[str] = ("ga", "pso", "aco")
+        self, request: AllocationRequest, algorithms: Iterable[str] = ("ga", "pso", "aco", "nsga2")
     ) -> list[AllocationResult]:
         results = [OPTIMIZERS[name].optimize(request) for name in algorithms]
         self.database.save_optimizer_results(results)

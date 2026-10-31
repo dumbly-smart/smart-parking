@@ -17,7 +17,7 @@ router = APIRouter()
 
 
 class AllocationRunRequest(BaseModel):
-    algorithm: Literal["ga", "pso", "aco", "all"] = "all"
+    algorithm: Literal["ga", "pso", "aco", "nsga2", "all"] = "all"
     request: AllocationRequest
 
 
@@ -31,7 +31,7 @@ class OptimizerBenchmarksResponse(BaseModel):
 
 @router.post("/api/allocation/run", response_model=AllocationRunResponse)
 def run_allocation(payload: AllocationRunRequest, request: Request) -> AllocationRunResponse:
-    algorithms = ("ga", "pso", "aco") if payload.algorithm == "all" else (payload.algorithm,)
+    algorithms = ("ga", "pso", "aco", "nsga2") if payload.algorithm == "all" else (payload.algorithm,)
     try:
         results = BenchmarkRunner(request.app.state.database).run(
             payload.request, algorithms
